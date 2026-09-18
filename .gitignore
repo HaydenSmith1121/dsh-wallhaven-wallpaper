@@ -1,0 +1,17 @@
+# Node
+node_modules/
+
+# Build and pack output that is not part of the package
+dist/
+*.tgz
+
+# Verification artifacts that are not meant to be shared; docs/settings.png is
+# the one screenshot that is, and it is committed on purpose.
+docs/verify-render.png
+docs/verify-render-dark.png
+docs/verify-gui.png
+
+# OS noise
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,71 @@
+{
+  "name": "dsh-wallhaven-wallpaper",
+  "version": "0.1.0",
+  "description": "Wallhaven wallpapers for the DeepSeek Harness web GUI: search wallhaven.cc from a settings page, wear any result as the shell background (with opacity/blur/scrim controls), and download the original to disk. The host half fetches everything, so the browser never has to reach wallhaven — which matters behind a proxy or a poisoned DNS.",
+  "type": "module",
+  "license": "MIT",
+  "author": "HaydenSmith1121",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HaydenSmith1121/dsh-wallhaven-wallpaper.git"
+  },
+  "homepage": "https://github.com/HaydenSmith1121/dsh-wallhaven-wallpaper#readme",
+  "bugs": {
+    "url": "https://github.com/HaydenSmith1121/dsh-wallhaven-wallpaper/issues"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "./lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "external": []
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "react": "^18.2.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:check": "node scripts/build.mjs --check",
+    "test": "node scripts/test.mjs",
+    "verify:live": "node scripts/verify-live.mjs",
+    "verify:client": "node scripts/verify-client.mjs",
+    "verify:gui": "node scripts/verify-gui.mjs",
+    "pack": "node scripts/pack.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "wallhaven",
+    "wallpaper",
+    "background",
+    "壁纸",
+    "cordis"
+  ]
+}

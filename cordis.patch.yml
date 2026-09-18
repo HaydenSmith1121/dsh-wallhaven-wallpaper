@@ -1,0 +1,17 @@
+# dsh-wallhaven-wallpaper bundle patch —— 一行同时服务两个半。
+#
+# 这一行不是装饰，它决定了客户端 bundle 能否被加载：
+#   · Loader 按 name 解析出本包，import lib/index.js 作为宿主半；
+#   · ClientModuleRegistry 通过同一个包的 dsh.client（package.json）与
+#     exports["./client"] 找到 lib/client.js，把它注入启动图当作浏览器半。
+#   去掉这一行，lib/client.js 永远不会被下发。
+#
+# 三个 id 不要混：
+#   - id: 这里是 loader 行 id，只用于 patch 定位 / 禁用，可任意起但必须唯一；
+#   - name: 必须是真实包名 dsh-wallhaven-wallpaper —— 它同时是启动图行 id 与
+#     __ModuleLoader__.load 的注册键，与 lib/client.js 里的 id 必须逐字相同。
+#
+# 本包不发布服务、不改写官方行、不替换任何 Slot，所以没有其它 patch 内容。
+- insert:
+    - id: wallhaven-wallpaper
+      name: 'dsh-wallhaven-wallpaper'

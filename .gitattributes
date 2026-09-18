@@ -1,0 +1,13 @@
+# Normalize line endings so a checkout on any platform produces the same bytes
+# the build hashes — `build:check` compares text, and a stray CRLF would make CI
+# disagree with a local build for no real reason.
+* text=auto eol=lf
+
+# Windows batch and PowerShell scripts keep their native endings.
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary artifacts are never normalized.
+*.png binary
+*.jpg binary
+*.tgz binary
