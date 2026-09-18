@@ -84,7 +84,30 @@ proxy in effect: http://127.0.0.1:7897
 由于生产 profile（`~/.dsh/profiles/web`）目前**无法 `pnpm install`**（见下），
 这一层跑在一个**隔离的 DSH home** 上：把 `web` profile 复制到 `D:\deepseek\.tmp\wh-home`，
 把插件放进它的 `node_modules` 并在 `dsh.profile.bundles` 里登记，然后在 43123 端口起一个独立实例。
-生产 profile 与 43120 上的 GUI **没有任何改动**。
+生产 profile 与 43120 上的 GUI **没有任何改动**。跑完这个一次性 home 已被删除。
+
+复现步骤（`dsh.cmd` 会硬写 `DSH_HOME`，所以必须直接调 CLI，不能用那个 shim）：
+
+```powershell
+$HOME2 = 'D:\deepseek\.tmp\wh-home'
+robocopy "$env:USERPROFILE\.dsh\profiles\web" "$HOME2\profiles\wh-verify" /E /MT:8
+Remove-Item -Recurse -Force "$HOME2\profiles\wh-verify\.dsh-module-fallback"   # robocopy 会把符号链接摊平，让 dsh 自己重建
+Copy-Item "$env:USERPROFILE\.dsh\settings.yaml" "$HOME2\settings.yaml"
+# 解开 tarball 到 wh-verify\node_modules\dsh-wallhaven-wallpaper，
+# 再把 "dsh-wallhaven-wallpaper" 加进该 profile 的 dependencies 与 dsh.profile.bundles
+
+$env:ELECTRON_RUN_AS_NODE = '1'
+$env:DSH_HOME = $HOME2
+& 'C:\...\DSH Desktop Beta.exe' --expose-internals 'C:\...\resources\app\lib\desktop-cli.js' `
+    --profile wh-verify --port 43123 --no-open
+
+# 另开一个带 CDP 端口的 Chrome，然后：
+node scripts/verify-gui.mjs --home $HOME2 --origin http://127.0.0.1:43123
+```
+
+`verify-gui.mjs` 自己从该实例的 `.credentials.yaml` 里派生浏览器会话 cookie
+（密钥是 base64url，**要先解码成 32 字节**再当 HMAC key 用；直接拿文本签名会得到一个格式正确
+但永远被拒的 cookie——这一步踩过）。
 
 ```
 1. 宿主半真的被装载了
