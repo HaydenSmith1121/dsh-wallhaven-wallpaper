@@ -1098,18 +1098,21 @@ function ShuffleAction(props) {
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
-      width: 28,
+      // The sidebar foot gives this seat very little room; a wrapping label
+      // turns "换一张" into two stacked characters, so it must not wrap.
+      width: props.wide ? 'auto' : 28,
       height: 28,
-      padding: 0,
+      padding: props.wide ? '0 8px' : 0,
       border: 0,
       borderRadius: 8,
       background: 'transparent',
       color: 'var(--dsw-alias-label-secondary)',
       cursor: 'pointer',
       font: 'inherit',
+      whiteSpace: 'nowrap',
     },
   }, props.wide
-    ? h('span', { style: { fontSize: 12 } }, label)
+    ? h('span', { style: { fontSize: 12, whiteSpace: 'nowrap' } }, label)
     : h('span', { style: { fontSize: 15, lineHeight: '1' }, 'aria-hidden': 'true' }, '\u21BB'));
 }
 
