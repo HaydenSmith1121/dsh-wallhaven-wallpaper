@@ -268,9 +268,19 @@ try {
   check('the token went back to the theme\'s own value', restored.base !== '' && !restored.base.startsWith('rgba('), restored.base);
 
   console.log('\n7. console hygiene');
-  const noise = consoleErrors.filter((line) => !/favicon|Download the React DevTools/u.test(line));
-  check('no console errors from the plugin', noise.length === 0, noise.slice(0, 3).join(' | '));
-  console.log(`   该页共发出 ${String(requests.length)} 个本插件请求`);
+  // Attribute errors rather than counting them: on a real profile the page runs
+  // a dozen other plugins, and one of them throwing is neither this plugin's
+  // fault nor this script's business to fail on. This package's own failures
+  // are identifiable — they carry its log prefix or come from its route prefix.
+  const mine = consoleErrors.filter((line) => line.includes('[dsh-wallhaven-wallpaper]')
+    || line.includes('/plugins/dsh-wallhaven-wallpaper/'));
+  const theirs = consoleErrors.filter((line) => !mine.includes(line)
+    && !/favicon|Download the React DevTools/u.test(line));
+  check('no console errors from this plugin', mine.length === 0, mine.slice(0, 3).map((line) => line.slice(0, 160)).join(' | '));
+  if (theirs.length > 0) {
+    console.log(`   （页面上另有 ${String(theirs.length)} 条来自其它插件的报错，不计入本插件：${theirs[0].slice(0, 100)}…）`);
+  }
+  console.log(`   该页共发出 ${String(requests.length)} 个 /plugins 请求`);
 } finally {
   await page.screenshot({ path: join(process.cwd(), 'docs', 'verify-gui.png') }).catch(() => undefined);
   await page.close().catch(() => undefined);
