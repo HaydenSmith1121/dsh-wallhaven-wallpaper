@@ -59,6 +59,46 @@ test('search sends the API key as a header, never in the URL', async () => {
   }
 });
 
+test('a Cloudflare origin outage says so, and says it is not the proxy', async () => {
+  const { temp, store } = await tempStore();
+  try {
+    // 521 is what wallhaven.cc actually served during a real origin outage, and
+    // the symptom is indistinguishable from a broken proxy unless it is named.
+    const transport = fakeTransport([{
+      match: '/api/v1/search',
+      status: 521,
+      body: '<html><title>wallhaven.cc | 521: Web server is down</title></html>',
+    }]);
+    const wallhaven = createWallhaven({ store, env: { HTTPS_PROXY: 'http://proxy.test:8080' }, ...transport });
+    const result = await wallhaven.search({ page: 1 });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /521/);
+    assert.match(result.reason, /源站已下线/);
+    assert.match(result.reason, /与你的网络、代理地址都无关/);
+    // The proxy really was fine, and the status still reports it as configured.
+    assert.equal(result.proxy, 'http://proxy.test:8080');
+
+    const probe = await wallhaven.probe();
+    assert.equal(probe.ok, false);
+    assert.match(probe.reason, /wallhaven 自己的故障/);
+  } finally {
+    await temp.cleanup();
+  }
+});
+
+test('a plain 500 still reads as a wallhaven server error', async () => {
+  const { temp, store } = await tempStore();
+  try {
+    const transport = fakeTransport([{ match: '/api/v1/search', status: 503, body: '{}' }]);
+    const wallhaven = createWallhaven({ store, env: {}, ...transport });
+    const result = await wallhaven.search({ page: 1 });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /服务端错误（503）/);
+  } finally {
+    await temp.cleanup();
+  }
+});
+
 test('a 401 explains that an API key is what is missing', async () => {
   const { temp, store } = await tempStore();
   try {

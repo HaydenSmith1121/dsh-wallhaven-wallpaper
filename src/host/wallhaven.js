@@ -41,6 +41,25 @@ const CACHE_MAX_BYTES = 256 * 1024 * 1024;
 const IMAGE_TIMEOUT_MS = 45000;
 
 /**
+ * Cloudflare's "my origin is not answering" statuses.
+ *
+ * These are the one class of failure where the honest answer is "nothing on
+ * your side is wrong" — worth naming, because the symptom looks exactly like a
+ * broken proxy and the fix people reach for (retyping the proxy address) cannot
+ * possibly help.
+ */
+const CLOUDFLARE_ORIGIN_ERRORS = {
+  520: '源站返回未知错误',
+  521: '源站已下线',
+  522: '连接源站超时',
+  523: '源站不可达',
+  524: '源站响应超时',
+  525: '与源站 SSL 握手失败',
+  526: '源站证书无效',
+  527: 'Railgun 出错',
+};
+
+/**
  * The extension a saved file should carry.
  *
  * The URL's own extension wins: wallhaven names the original file there, and it
@@ -245,6 +264,15 @@ export function createWallhaven(options) {
     }
     if (status === 429) {
       return 'wallhaven 限流（429）：API 每分钟上限 45 次，请稍后再试。';
+    }
+    // Cloudflare's 52x family is emitted when Cloudflare itself is up but
+    // cannot reach wallhaven's origin. Saying so explicitly is worth the extra
+    // sentence: the plain "服务端错误" reads like a local misconfiguration, and
+    // the natural next move — fiddling with the proxy address — cannot help.
+    const cloudflare = CLOUDFLARE_ORIGIN_ERRORS[status];
+    if (cloudflare !== undefined) {
+      return `wallhaven 的源站当前不可用（Cloudflare ${String(status)}：${cloudflare}）—— 这是 wallhaven 自己的故障，`
+        + '与你的网络、代理地址都无关，过一会儿再试即可。';
     }
     if (status >= 500) {
       return `wallhaven 服务端错误（${String(status)}）${message === '' ? '' : `：${message}`}，稍后重试。`;
