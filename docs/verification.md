@@ -136,19 +136,76 @@ node scripts/verify-gui.mjs --home $HOME2 --origin http://127.0.0.1:43123
 
 截图见 `docs/settings.png`（真实 GUI，真实壁纸，真实搜索）。
 
-## 已知问题：生产 profile 现在装不了东西
+## 五、装进生产 profile（3080）
 
-`~/.dsh/profiles/web/package.json` 里有一条指向**已不存在的文件**的依赖：
+生产环境是 `DSH_HOME=~/.dsh`、profile `web`、端口 **3080**。装法就是文档里那一条：
 
+```bash
+dsh plugin --profile web add github:HaydenSmith1121/dsh-wallhaven-wallpaper
 ```
-"dsh-ark-plans": "file:D:/deepseek/dsh-plugin-collection/plugins/dsh-ark-plans/0.1.6-alpha.1/dsh-ark-plans-0.1.0.tgz"
-```
 
-该文件在 `dsh-plugin-collection` 退役（提交 `0ae3485`）时被删掉了，于是 `pnpm` 在解析阶段就
-`ENOENT` 退出——这会让**任何** `dsh plugin --profile web add …` 失败，与本插件无关。
-那个 tarball 仍在该仓库的历史里（`b545cd9`），可以用
-`git -C D:\deepseek\dsh-plugin-collection show b545cd9:plugins/dsh-ark-plans/0.1.6-alpha.1/dsh-ark-plans-0.1.0.tgz`
-取回并放回原路径，之后 `dsh plugin` 恢复正常。
+装之前先修好了一个与本插件无关、但会挡住**任何**安装的问题（见下一节）：该 profile 里有四条
+`file:` 依赖指向被删掉的 tarball，`pnpm` 在解析阶段就 `ENOENT`。
+
+四步校验（③④ 来自你仓库的安装说明）：
+
+| # | 命令 | 结果 |
+|---|---|---|
+| ② | 依赖与 bundles | 已写入 `dependencies` 与 `dsh.profile.bundles` |
+| ③ | `dsh --profile web --dump-config` | 末行 `# == dsh-wallhaven-wallpaper`，内含 `id: wallhaven-wallpaper / name: dsh-wallhaven-wallpaper` |
+| ④ | `dsh web --port 3081 --no-open` | 输出**只有一行** `dsh web: http://127.0.0.1:3081/?token=…`，无 `plugin tree failed to load` / `does not provide an export` / `Cannot find module` |
+
+第 ④ 步刻意用 **3081** 而不是重启 3080：3080 正在托管发起这次工作的那个会话，
+重启它会中断当前回合。同一个 home、同一个 profile、另一个端口，验证的是同一棵树。
+
+`verify-gui.mjs` 随后针对 3081 跑满 21 项，全过（页面里能看到真实会话列表与真实壁纸）。
+一个附带结论：检查「控制台无报错」要按**归属**过滤而不是按数量 —— 页面上
+`dsh-workbuddy-connect` 的 `WorkBuddyProbeControl` 会抛
+`Cannot read properties of null (reading 'provider')`，那与本插件无关；脚本现在把这类报错单列出来。
+
+### 看图才发现的三个问题
+
+前面几层都没抓到，是在**真实 GUI 的截图**里看出来的：
+
+1. **侧边栏「换一张」折成两行**。那个席位给的宽度很小，按钮又固定 28px 宽。
+   宽栏改成自适应 + `nowrap`，窄栏仍是 28px 的 ↻。
+2. **默认不透明度偏保守**。默认 `0.72` 在浅色主题下几乎看不出壁纸；想看效果要调到 0.35–0.5。
+   默认值保留（可读性优先），但这个旋钮的位置值得知道。
+3. **背景图层两处无谓开销**：默认模糊为 0 时，`will-change: filter` 把一个整屏元素提升成独立
+   合成层，`inset: -64px` 又让绘制面积比视口大 ~20%。改成按需：只有真的开了模糊才外扩。
+
+### 无头浏览器的栅格化假象（记下来，免得下次再查一遍）
+
+无头 Chrome 截图时，背景图层经常只被栅格化出**一部分**（有时顶部 575px，有时只有 35px，
+每次重绘会长一点），看起来像「壁纸没铺满」。但同一页面的 DOM 全是正常的：
+图层 `1600×1000`、`position:fixed`、`z-index:-1`、`opacity:1`、
+`--dsw-alias-bg-base` 已是 `rgba(255,255,255,0.34)`、控制台无报错。
+
+**在真实（有头、GPU 渲染）浏览器里打开同一个地址，壁纸铺满整个窗口。**
+
+所以本项目的截图数据不能当作「有没有画出来」的判据：断言几何、计算样式、token 值都可以，
+唯独**像素覆盖**要靠人眼或真实浏览器。
+
+## 六、修好的那条 `file:` 断链
+
+`~/.dsh/profiles/web/package.json` 里有四条依赖指向**已不存在的文件**（都指向退役的
+`dsh-plugin-collection`）：`dsh-ark-plans`、`dsh-excel-viewer`、`dsh-opencode-go-plus`、
+`dsh-session-cleanup`。它们在 `dsh-plugin-collection` 退役（提交 `0ae3485`）时被删掉，
+于是 `pnpm` 在解析阶段就 `ENOENT` 退出——这会让**任何** `dsh plugin --profile web add …` 失败。
+
+这四个文件仍在该仓库历史里（`0ae3485^`），已用 `git archive` 原样取回原路径：
+**没有改动任何依赖规格，也没有改动任何已装插件的版本。**
+
+> 没有走「迁移到各自仓库的 `github:` 规格」这条路，因为 `dsh-ark-plans` 的仓库已经是
+> **0.2.0** 而本机装的是 **0.1.0**：那样会顺带升级一个正在正常工作的插件，超出「装一个插件」的范围。
+> 想迁移的话是一次独立的、需要单独验证的操作。
+>
+> 取回时用了 `git archive --output=<file>` 而不是 `git show … > file`：
+> 后者会让二进制经过 PowerShell 的文本管线，tarball 会被破坏。
+
+profile 的五个状态文件（`package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` /
+`cordis.patch.yml` / `cordis.yml`）在动手前已备份到
+`$DSH_HOME/storages/dsh-plugins-market/backups/wallhaven-install-<时间戳>/`。
 
 ## 没验证到的
 
