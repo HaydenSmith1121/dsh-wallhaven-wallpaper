@@ -1,13 +1,14 @@
 # 验证记录
 
 这份文档记录**跑过什么、看到了什么**，以及每一层验证各自能证明什么、不能证明什么。
-所有命令都在本机（Windows 11 / Node 24.14.0 / DSH Desktop Beta 2.0.11-beta.1）实跑通过。
+第一至六节在 DSH Desktop Beta 2.0.11-beta.1（`@deepseek-ai/dsh` 0.1.6-alpha.1 一代）上实跑通过；
+第七节是把同一套验证搬到 **DSH 桌面版 0.1.7-rc.2** 上重跑的记录，包括在那里抓到的两个真 bug。
 
 ## 四层验证
 
 | 命令 | 规模 | 它证明什么 |
 |---|---|---|
-| `npm test` | 67 项 | 纯逻辑与宿主端：配置校验、搜索参数、响应解析、颜色换算、代理判定、配置存储、路由分发与安全边界 |
+| `npm test` | 99 项 | 纯逻辑与宿主端：配置校验、搜索参数、响应解析、颜色换算与对比度、代理判定、配置存储、路由分发与安全边界，以及**换版本才会走到的容错分支** |
 | `npm run verify:live` | 15 项 | 真的连 wallhaven：CONNECT 隧道、搜索、缩略图落盘缓存、下载原图、随机换图 |
 | `npm run verify:client` | 24 项 | 真浏览器 + 真主题 token + 真宿主端：bundle 能否被 carrier 装载、页面能否渲染、背景与 token 改写是否成立 |
 | `npm run verify:gui` | 21 项 | 真 `dsh web` 实例：行是否被装载、bundle 是否被下发、设置外壳里是否真的出现这一页、壁纸是否真的铺上 |
@@ -17,8 +18,15 @@
 ## 一、单元与集成（`npm test`）
 
 ```
-ℹ tests 67   ℹ pass 67   ℹ fail 0
+ℹ tests 99   ℹ pass 99   ℹ fail 0
 ```
+
+其中 `test/compat.test.mjs` 是 0.1.7-rc.2 那一轮补上的 30 项，覆盖的都是**只有换版本才会
+走到的分支**：只有一个 `register(ns, locale, dict)` 重载的 locale 服务、注册到一半抛异常的
+字典（必须回滚已注册的那一半）、在某个席位上抛错的 slots、返回 `undefined` 的
+`webServer.register`、以及主按钮在「近白底配白字」时把白色拒掉。
+写这组用例时立刻抓到一个真 bug：`detectDshVersion` 里的 `ctx.get('profileContext')`
+没有包 try/catch，一个会抛的 context 能让异常直接穿出 `apply()`。
 
 覆盖到的、值得单独点名的用例：
 
@@ -207,9 +215,142 @@ profile 的五个状态文件（`package.json` / `pnpm-lock.yaml` / `pnpm-worksp
 `cordis.patch.yml` / `cordis.yml`）在动手前已备份到
 `$DSH_HOME/storages/dsh-plugins-market/backups/wallhaven-install-<时间戳>/`。
 
+## 七、换到 DSH 桌面版 0.1.7-rc.2
+
+这一轮不是「再跑一遍」，而是**把插件装到一个它没见过的 Harness 上**。本机的
+`D:\install\Harness` 是 `@deepseek-ai/dsh-desktop` / `dsh-desktop-runtime` **0.1.7-rc.2**
+（`dshBuildCommit c1275515`），比写这个插件时的 `0.1.6-alpha.1` 晚一代。
+
+### 先做的事：把 0.1.7-rc.2 的接口面读出来
+
+不猜，直接从装好的运行时里读：
+
+```powershell
+# app.asar 里的 @deepseek-ai/* 全量解出来（284 个包，约 54 MB，跳过 libreoffice）
+node _wh_extract.cjs D:\...\_wh_dsh
+```
+
+再对着**正在跑的**实例核对（DSH 自带的 Inspect 接口，比读源码更权威）：
+
+| 接口 | 0.1.7-rc.2 上的结论 |
+|---|---|
+| `settings.section` / `sidebar.footer.action` | 都还在，都是 `list` 席位，`replaceRisk: none`，注册字段仍是 `id`/`order`/`label` |
+| `locale.register(ns, dicts)` / `bind(ns)` | 都在（另有 `register(ns, locale, dict)` 重载） |
+| `theme/change` | 还在；客户端事件一共只有 4 个 |
+| `webServer.register({kind:'prefix'})` | 签名未变；重复 `(kind, path)` 仍然抛错 |
+| `dsh.client` + `exports["./client"]` | 仍是客户端半的发现路径；`dsh.client.external` 才会建图边，`inject` 只是信息性的 |
+| `--dsw-alias-*` token | 14 个 alias token 全在；`--dsw-alias-label-primary-inverted` **不在公布的表里但确实存在** |
+| `dsh.manifestVersion` | **全仓库零处引用**——已经没有任何代码读它 |
+
+结论：这个插件用到的接口在 0.1.7-rc.2 上**一个都没变**。所以「适配新版本」这件事不是修一个
+调用，而是让插件在接口*真的*变了的那天还能活下来——也就是这一轮加的能力探测层。
+
+### 隔离实例怎么起的
+
+不碰生产 profile。用 `DSH_HOME` 指向一个一次性 home，profile 里只放两个官方 bundle 加本插件，
+插件用 **junction** 链到仓库（这样改完 `lib/` 直接生效，不需要 `pnpm install`）：
+
+```powershell
+New-Item -ItemType Directory -Force "$T\profiles\whv\node_modules"
+# package.json: bundles = [dsh-base, dsh-web-app, dsh-wallhaven-wallpaper]
+cmd /c mklink /J "$T\profiles\whv\node_modules\dsh-wallhaven-wallpaper" <仓库路径>
+
+$env:ELECTRON_RUN_AS_NODE='1'; $env:DSH_HOME=$T
+& 'D:\install\Harness\DeepSeek Harness.exe' `
+  'D:\install\Harness\resources\app.asar\dsh\node_modules\@deepseek-ai\dsh\lib\bin.js' `
+  --profile whv --port 43992 --no-open
+```
+
+两个坑：`Set-Content -Encoding utf8` 会写 BOM，`JSON.parse` 直接死在第一个字符上
+（要用 `[System.IO.File]::WriteAllText` + `UTF8Encoding($false)`）；
+`--dump-config` 是最好的第一道闸门，它证明 loader 行确实进了合成树。
+
+### 结果
+
+```
+GET /plugins/dsh-wallhaven-wallpaper/compat
+{"ok":true,"dshVersion":"0.1.7-rc.2","dshVersionStatus":"verified",
+ "dshVersionSource":"filesystem","profile":"whv","node":"24.18.1","platform":"win32",
+ "routes":{"ok":true,"mode":"disposer","error":""}}
+```
+
+浏览器侧（Chrome 153 headless + 裸 CDP，本机 playwright 已被移除，用 Node 自带的
+`WebSocket` 直连 `--remote-debugging-port`）：
+
+```
+OK  sidebar.footer.action seat rendered — 换一张
+OK  plugin nav entry present in the settings shell — … | 通用设置 | 模型 | 内置插件 | Agent 预设 | 壁纸 | …
+OK  page renders "兼容性"
+OK  compatibility row "宿主路由" / "设置页席位" / "侧边栏席位" / "文案字典" / "主题 token" / "背景图层"
+OK  compatibility verdict rendered — 本插件需要的接口都在。
+OK  primary button found and coloured — {"color":"rgb(255,255,255)","background":"rgb(15,17,21)"}
+OK  no console errors
+```
+
+### 抓到的两个真 bug
+
+**① 主题切换晚一拍 → 浅色下壁纸完全透不出来。**
+
+`theme/change` 在 shell 把 `data-ds-dark-theme` 写到 `body` **之前**触发。于是：
+
+| DOM 实际配色 | 插件写的覆盖选择器 | 后果 |
+|---|---|---|
+| 深色 | `html:root body`（浅色那条） | 浅色推导出的 `rgba(255,255,255,.72)` 压过了深色主题 → 发灰发白 |
+| 浅色 | `html:root body[data-ds-dark-theme]` | 那条规则不匹配，画布 token 保持主题的不透明值 → **壁纸一点都透不出来** |
+
+每次切换都恰好差一拍，可复现：
+
+```
+boot (dark):  {"dark":true,  "bgBase":"rgba(255, 255, 255, 0.720)", "overrideSelector":"light"}
+after light:  {"dark":false, "bgBase":"#fff",                      "overrideSelector":"dark"}
+after dark:   {"dark":true,  "bgBase":"rgba(255, 255, 255, 0.720)", "overrideSelector":"light"}
+```
+
+修法不是「延迟一下再读」——那只是把竞态换个地方。改成**观察那个属性本身**：
+`MutationObserver` 盯 `documentElement` 的 `data-ds-dark-theme`（`subtree` 让它在 `<body>`
+出现之前就能挂上，`attributeFilter` 保证别的属性动不了它），回调必然发生在属性落地**之后**。
+修完：
+
+```
+after light:  {"dark":false, "bgBase":"rgba(255, 255, 255, 0.720)", "sidebar":"rgba(249, 250, 251, 0.720)"}
+after dark:   {"dark":true,  "bgBase":"rgba(21, 21, 23, 0.720)",    "sidebar":"rgba(27, 27, 28, 0.720)"}
+after light:  {"dark":false, "bgBase":"rgba(255, 255, 255, 0.720)"}
+```
+
+**② 主按钮文字在深色下不可读（1.05:1）。**
+
+改这个插件时本来想把 `--dsw-alias-label-primary-inverted` 换成「JS 算出来的对比度颜色」，
+理由是那个 token 不在 DSH 公布的 token 表里、未来可能消失。第一版就是这么写的：
+JS 读一次主题、算一次、写成 `--dsh-wh-on-brand`。结果深色下白字配近白底，
+**1.05:1，等于看不见**——因为 JS 那次读取拿到了浅色的值。
+
+真正的修法是把「实时性」还给 CSS：
+
+```css
+html:root, html:root body {
+  --dsh-wh-on-brand: var(--dsw-alias-label-primary-inverted, <按对比度算出的兜底>);
+}
+```
+
+主题的 token 存在时由 **CSS 在绘制时**解析（不存在过期问题），不存在时才用 JS 算的兜底。
+声明在 `body` 上而不是 `:root`，理由和表面 token 那条一样：`var()` 只在**声明它的那个元素**
+上取到实时值。修完实测：
+
+```
+light: brand=#0f1115  →  color rgb(255,255,255) on rgb(15,17,21)   = 18.90:1
+dark:  brand=#f9fafb  →  color rgb(53,54,56)   on rgb(249,250,251) = 11.57:1
+```
+
+> 两个 bug 都是「只在真实 GUI 里、真实切一次主题」才看得见的。
+> 单测、`build:check`、`--dump-config` 全都不会报。
+
 ## 没验证到的
 
 - **NSFW / sketchy 与账号相关接口**：需要一个真实 API Key，本次没有使用。相关分支（401 的措辞、
   Key 走请求头）由单测覆盖，但没有对真实账号的端到端调用。
 - **macOS / Linux**：只在 Windows 上跑过。下载目录默认值走 `os.homedir()/Pictures`。
 - **非回环部署**：路由的写操作只做同源校验，没有身份认证——这是 DSH 自身的姿态，README 里已写明。
+- **`0.1.6-alpha.1` 之外的旧版本**：容错分支有单测，但没有把插件真的装到那些版本上跑过。
+  能力探测层的作用正是让这种情况**可诊断**（兼容性面板会列出缺哪一块），而不是保证它一定能用。
+- **wallhaven 真实取图（第七节）**：隔离实例没有配代理，所以那一轮只验证了 token 改写与图层挂载，
+  图片本身是 502。真实取图由第二节（`verify:live`）覆盖。

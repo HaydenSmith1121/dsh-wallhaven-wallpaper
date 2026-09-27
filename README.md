@@ -3,10 +3,15 @@
 > 给 DeepSeek Harness 的 Web GUI 换上一层壁纸：**在设置里搜 wallhaven.cc，点一下就把那张图铺成界面背景**，并可以随时把原图存到本地。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/DeepSeek_Harness-2.0.11--beta.1-4D6BFE?style=flat-square" alt="dsh 基线">
+  <img src="https://img.shields.io/badge/DeepSeek_Harness-0.1.6_%E2%80%93_0.1.7--rc.2-4D6BFE?style=flat-square" alt="dsh 基线">
   <img src="https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square" alt="MIT">
   <img src="https://img.shields.io/badge/零依赖-无运行时依赖-8B5CF6?style=flat-square" alt="零依赖">
 </p>
+
+> **换了 Harness 版本先看这里。** 本插件不按版本号判断兼容性，而是**逐个接口探测**：
+> 每个调用独立成败，缺了哪一个就降级哪一个，并写进 **设置 → 壁纸 → 兼容性** 给你看。
+> `0.1.6-alpha.1` 与 `0.1.7-rc.2` 两代都实测跑通；其它版本请看那一页的报告，而不是猜。
+> 详见 [兼容性](#兼容性)。
 
 ---
 
@@ -34,13 +39,26 @@ Harness 的界面配色是一整套 `--dsw-*` 设计 token，没有任何「换�
 
 ## 安装
 
-```bash
-dsh plugin --profile web add github:HaydenSmith1121/dsh-wallhaven-wallpaper
-```
+**先选对 profile —— 这是最容易装错的一步。**
 
-重启 `dsh web` 后生效。
+| 你在用 | profile | 命令 |
+|---|---|---|
+| **DeepSeek Harness 桌面版** | `desktop` | `dsh plugin --profile desktop add github:HaydenSmith1121/dsh-wallhaven-wallpaper` |
+| `dsh web` / `dsh tui` 命令行 | `web` | `dsh plugin --profile web add github:HaydenSmith1121/dsh-wallhaven-wallpaper` |
+
+桌面版**只会启动 `desktop` 这个 profile**（`dsh-desktop-host` 里写死的），装进 `web` 是永远不会出现的。
+反过来也一样。装完重启 Harness 生效。
 
 > 也可以从 npm 或本地 tarball 安装：把上面的 spec 换成包名 / `.tgz` 路径即可。
+
+装完想确认一下，不用打开界面：
+
+```bash
+dsh --profile desktop --dump-config | tail -3      # 末行应出现 dsh-wallhaven-wallpaper
+curl http://127.0.0.1:<端口>/plugins/dsh-wallhaven-wallpaper/compat
+```
+
+第二条会直接告诉你 Harness 版本、profile、以及宿主路由到底注册上没有。
 
 ## 用法
 
@@ -106,6 +124,7 @@ SOCKS 不在支持范围内，请在代理客户端上开一个 HTTP 端口。
 | 一个背景图层 | 往 `body` 最前面插入一个 `position:fixed; z-index:-1` 的容器（壁纸 + 遮罩两层），`pointer-events:none` |
 | 画布底色 | `html` 得到一个**不透明**底色，`body` 的背景于是不再上传给 canvas，而是作为一层半透明表面画在壁纸之上 |
 | 四个表面 token | 读回 `--dsw-alias-bg-base`、`--dsw-specific-sidebar-fill`、`--dsw-alias-bg-layer-1/2` 的**当前真实值**，按 `表面不透明度` 重算 alpha 后写回 |
+| 一个自有 token | `--dsh-wh-on-brand`，只给插件自己的主按钮用；shell 不读它，所以没有视觉副作用 |
 
 最后一条是它和「硬编码一套配色」的关键区别：
 
@@ -114,11 +133,16 @@ SOCKS 不在支持范围内，请在代理客户端上开一个 HTTP 端口。
   写在 `:root` 上只会被继承，而被继承的值永远输给主题自己写在 `body` 上的那一条。
 - 值是在运行时从 `getComputedStyle` 读的，所以**产品换配色、加新主题，本插件都跟着走**，
   不会留下一套过期的颜色。读之前会先摘掉自己上一次的覆盖，否则 alpha 会一层层叠上去。
-- 主题切换（`theme/change`）后会重新读一遍再写回。
+- 重读由**两个**信号触发，缺一不可：`theme/change` 事件，以及 `MutationObserver` 对
+  `body[data-ds-dark-theme]` 的观察。只要事件是不够的——它在属性落地**之前**触发，
+  于是读到的是上一个配色，并且会据此把覆盖写到错误的选择器上（浅色下壁纸会完全透不出来）。
+  详见上面「实测过的版本」。
 
 顺带一提：`--dsw-alias-brand-primary` 在 DSH 里是**中性高对比色**（浅色近黑、深色近白），
-不是蓝色。所以插件里的主按钮文字用的是配对的 `--dsw-alias-label-primary-inverted`，
-不是写死的白色——写死白色会在深色主题下变成白底白字。
+不是蓝色。所以插件里的主按钮文字用 `var(--dsw-alias-label-primary-inverted, 兜底)`，
+不是写死的白色——写死白色会在深色主题下变成白底白字（实测 1.05:1，等于看不见）。
+那个 token 不在 DSH 公布的 token 表里，所以兜底值是**按对比度算出来的**黑或白，
+而不是另一个写死的颜色。
 
 ## 网络与安全边界
 
@@ -131,6 +155,9 @@ SOCKS 不在支持范围内，请在代理客户端上开一个 HTTP 端口。
 - **不碰模型**：不注册任何模型工具，不改写任何路由，不发任何模型请求。KV cache 不受影响。
 - **写文件只有两处**：自己的配置与缩略图缓存在 `$DSH_HOME/storages/dsh-wallhaven-wallpaper/` 下；
   只有你点了「下载原图」才会写到你指定的目录，且先写 `.part` 再改名。
+- **`/compat` 是只读的**（GET，非 GET 一律 405），不含 API Key 与代理凭据，
+  只回显版本、profile、`$DSH_HOME`、Node 版本和路由注册结果。`$DSH_HOME` 属于路径信息，
+  和 `/status` 已经在回的配置路径同一性质——评估「谁能连到这个端口」时一起算。
 
 ## 它写在哪里
 
@@ -145,35 +172,95 @@ SOCKS 不在支持范围内，请在代理客户端上开一个 HTTP 端口。
 
 ## 兼容性
 
-- 基线：**DSH Desktop Beta 2.0.11-beta.1**（`@deepseek-ai/dsh` 0.1.6-alpha.1 一代的客户端）。
+### 怎么做的：探测，不是版本号
+
+DSH 是 nightly 节奏，而这个插件是从 git 装的 ——「你手上的版本」和「写这个插件时的版本」
+经常不是同一个。所以这里**没有一处代码读版本号来决定行为**：版本号只被*显示*，从不被*判断*。
+
+取而代之的是，每个和 Harness 的接触点都**独立成败**：
+
+| 接触点 | 用什么探测 | 失败时 |
+|---|---|---|
+| 宿主路由 | `webServer.register({kind:'prefix'})` 的返回值 | 记录原因，设置页显示「宿主路由 · 缺失」，**不抛出**——抛出会让这一行 fiber 失败，某些版本上等于启动失败 |
+| 设置页席位 | `slots.inject` + `slots.register` | 只丢设置页，侧边栏照旧 |
+| 侧边栏席位 | 同上，**另一次独立调用** | 只丢侧边栏，设置页照旧 |
+| 文案字典 | 先试 `register(ns, {zh,en})`，失败再逐个 `register(ns, locale, dict)` | 两个都不行就用插件自带的兜底翻译，页面**仍然可读**（英文/中文），而不是一片空 key |
+| 主题 token | 运行时读 `--dsw-*`，读不到就不写 | 保留主题自己的值 |
+| 文档图层 | `document.body` 是否已存在 | 监听 `DOMContentLoaded` 后重试，而不是抛在 `apply()` 里 |
+
+**设置 → 壁纸 → 兼容性** 把这些逐条列出来，带状态点和一个总结论。换版本之后先看那一页：
+它会告诉你缺的是哪一块，而不是让你对着一个不动的界面猜。
+
+### 实测过的版本
+
+| `@deepseek-ai/dsh` | 桌面版 | 结果 |
+|---|---|---|
+| `0.1.6-alpha.1` | Desktop Beta 2.0.11-beta.1 | 全部接口齐全（原始基线） |
+| `0.1.7-rc.2` | 桌面版 0.1.7-rc.2 | 全部接口齐全；过程中修掉了下面两个真问题 |
+
+`0.1.7-rc.2` 上抓到的两个问题，都属于「只在真环境里才看得见」：
+
+1. **主题切换晚一拍。** `theme/change` 在 shell 把 `data-ds-dark-theme` 写到 `body` **之前**就触发了。
+   于是插件读到的是**上一个**配色，并且按这个过期读法选了覆盖选择器 —— 浅色下覆盖写到了
+   `body[data-ds-dark-theme]` 上，那条规则根本不匹配，画布 token 保持主题的不透明值，
+   **壁纸完全透不出来**。修法：除事件之外再 `MutationObserver` 观察那个属性本身，
+   属性变了才重读（见 `watchPalette`）。
+2. **主按钮文字可能不可读。** `--dsw-alias-label-primary-inverted` 是 `--dsw-alias-brand-primary`
+   的配对色（浅色近黑配白字、深色近白配深字）。旧代码把它写死在 CSS 里是对的，
+   但那个 token **不在 DSH 公布的 token 表里**，未来可能消失。改成
+   `var(--dsw-alias-label-primary-inverted, 兜底)` —— 有就用主题的（CSS 实时解析，不存在过期问题），
+   没有就用按对比度算出来的黑/白。实测浅色 18.90:1、深色 11.57:1。
+
+### 边界
+
 - 宿主半：一个前缀路由 `/plugins/dsh-wallhaven-wallpaper`（其余路由都挂在它下面），
   不发布服务、不改写官方行。
 - 客户端半：占用 `settings.section`（id `wallhaven-wallpaper`）与 `sidebar.footer.action`
   （id `wallhaven-shuffle`）两个**增量**席位，`replaceRisk` 均为 `none`，不与任何替换官方渲染器的插件抢位。
 - 运行时**零依赖**：只用 `node:http` / `node:https` / `node:tls` / `node:fs`，没有第三方包。
 - Node `^22.19.0 || >=24.0.0`。
+- `peerDependencies` 写成 `>=` 而不是 `^`：插件从不 `import` cordis 或 react
+  （React 由 shell 的 seed 表提供），卡死上界只会在 Harness 升级时挡住安装。
+- `package.json` 里的 `dsh.manifestVersion` 在 0.1.7-rc.2 里**已经没有任何代码读它**，
+  但保留着：老版本可能校验它，而新版本忽略未知字段——留着两边都不会坏。
 
 ## 开发
 
 ```bash
 npm run build          # src/ → lib/（宿主半原样拷贝；客户端半内联共享词汇 + 加 ModuleLoader 外壳）
 npm run build:check    # 校验 lib/ 与 src/ 一致（CI 用）
-npm test               # 67 项单元与集成测试
+npm test               # 99 项单元与集成测试
 npm run verify:live    # 真连 wallhaven（需要 HTTPS_PROXY 或已配置代理）
 npm run verify:client  # 真浏览器 + 真主题 token 的渲染验证
+```
+
+```
+src/
+  shared/constants.js   ← 配置词汇 + 颜色数学；两半共用，客户端内联
+  shared/compat.js      ← 版本判定、能力报告、locale/slot/route 的容错适配器；同样两半共用
+  host/compat.js        ← 宿主端：探测 DSH 版本与 profile
+  host/routes.js        ← 前缀路由 + /compat
+  client.js             ← 设置页、侧边栏按钮、背景图层、兼容性面板
 ```
 
 `lib/` **是提交进仓库的**：本包也可以直接从 GitHub 安装，而 git 安装不会跑我们的构建。
 `build:check` 就是用来保证这份提交的产物诚实的。
 
-构建里有两道闸门值得单独说：客户端 bundle 是**在一个函数体里求值**的（不是 ES module），
-所以 `scripts/build.mjs` 会拒绝任何残留的 `import`/`export`，并且**用 `node:vm` 真正编译一遍** ——
-少一个括号这种错误会在这里失败，而不是变成一个只有打开控制台才看得见的 SyntaxError。
+构建里有三道闸门值得单独说：客户端 bundle 是**在一个函数体里求值**的（不是 ES module），
+所以 `scripts/build.mjs` 会拒绝任何残留的 `import`/`export`，**用 `node:vm` 真正编译一遍** ——
+少一个括号这种错误会在这里失败，而不是变成一个只有打开控制台才看得见的 SyntaxError ——
+并且会检查每个 `shared/` 模块**自身不含任何 `import`**（内联就是字符串拼接，
+带依赖的模块要么让闸门失败，要么悄悄丢掉绑定）。
+
+`test/compat.test.mjs` 专门覆盖「Harness 不按预期回答」的那一半：只有一个
+`register(ns, locale, dict)` 重载的 locale 服务、注册到一半抛异常的字典、
+在某个席位上抛错的 slots、返回 `undefined` 的 `webServer.register`，
+以及主按钮在「近白底配白字」时把白色**拒掉**。这些都是只有换版本才会走到的分支。
 
 `verify:client` 会在真实浏览器里加载 `lib/client.js`，把它挂进一个复刻外壳，
 并**从已安装的 DSH 里提取真实的 `--dsw-*` token**再断言计算样式 —— 包括浅色与深色两套，
-以及在两套配色下主按钮文字的对比度。它至少抓到过两个真 bug：覆盖写在了 `:root`（无效），
-以及主按钮写死白色文字（深色主题下白底白字）。
+以及在两套配色下主按钮文字的对比度。它至少抓到过三个真 bug：覆盖写在了 `:root`（无效）、
+主按钮写死白色文字（深色主题下白底白字 1.05:1）、以及主题切换晚一拍导致浅色下壁纸完全透不出来。
 
 ## 许可
 

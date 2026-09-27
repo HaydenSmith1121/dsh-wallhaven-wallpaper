@@ -13,6 +13,7 @@
  */
 
 import './../test/constants.test.mjs';
+import './../test/compat.test.mjs';
 import './../test/net.test.mjs';
 import './../test/store.test.mjs';
 import './../test/wallhaven.test.mjs';

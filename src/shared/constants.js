@@ -494,3 +494,66 @@ export function fadeColor(value, factor) {
   const alpha = Math.min(1, Math.max(0, parsed[3] * factor));
   return `rgba(${String(parsed[0])}, ${String(parsed[1])}, ${String(parsed[2])}, ${alpha.toFixed(3)})`;
 }
+
+/**
+ * WCAG relative luminance of a colour, ignoring its alpha.
+ *
+ * @param value - a CSS colour string.
+ * @returns `0`…`1`, or `null` when the colour was not understood.
+ */
+export function relativeLuminance(value) {
+  const parsed = parseColor(value);
+  if (parsed === null) return null;
+  const linear = (raw) => {
+    const channel = raw / 255;
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * linear(parsed[0]) + 0.7152 * linear(parsed[1]) + 0.0722 * linear(parsed[2]);
+}
+
+/**
+ * WCAG contrast ratio between two colours.
+ *
+ * @param a - one CSS colour.
+ * @param b - the other.
+ * @returns `1`…`21`, or `null` when either colour was not understood.
+ */
+export function contrastRatio(a, b) {
+  const left = relativeLuminance(a);
+  const right = relativeLuminance(b);
+  if (left === null || right === null) return null;
+  return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05);
+}
+
+/**
+ * Pick a foreground that is actually readable on `background`.
+ *
+ * This exists because of one specific trap. The primary button's text colour
+ * comes from `--dsw-alias-label-primary-inverted`, which is the *paired* token
+ * for `--dsw-alias-brand-primary` — and that pair is neutral and inverting: near
+ * black on the light palette, near white on the dark one. So a hard-coded white
+ * is white-on-white on the dark palette, and a hard-coded black is
+ * black-on-black on the light one.
+ *
+ * The token is also undocumented (it is not in DSH's published token registry),
+ * so it can vanish from a future theme without warning. Reading it and then
+ * *checking* it — rather than trusting it, or replacing it with a constant —
+ * is what keeps the button readable across palettes and across DSH versions.
+ *
+ * @param background - the fill the text sits on.
+ * @param preferred - the token value the theme offers, if any.
+ * @param minimum - the ratio below which `preferred` is rejected; defaults to
+ *   the WCAG AA threshold for normal text.
+ * @returns a CSS colour: `preferred` when it passes, else black or white.
+ */
+export function readableForeground(background, preferred, minimum) {
+  const floor = typeof minimum === 'number' ? minimum : 4.5;
+  if (typeof preferred === 'string' && preferred !== '') {
+    const ratio = contrastRatio(preferred, background);
+    if (ratio !== null && ratio >= floor) return preferred;
+  }
+  const luminance = relativeLuminance(background);
+  // An unreadable background cannot be judged, so keep what the theme offered.
+  if (luminance === null) return typeof preferred === 'string' && preferred !== '' ? preferred : '#ffffff';
+  return luminance > 0.5 ? '#000000' : '#ffffff';
+}

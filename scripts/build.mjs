@@ -38,14 +38,21 @@ const CHECK_ONLY = process.argv.includes('--check');
 const HOST_FILES = [
   'index.js',
   'shared/constants.js',
+  'shared/compat.js',
+  'host/compat.js',
   'host/net.js',
   'host/store.js',
   'host/wallhaven.js',
   'host/routes.js',
 ];
 
-/** The one module both halves share; the client gets it inlined. */
-const SHARED = 'shared/constants.js';
+/**
+ * The modules both halves share; the client gets them inlined, in this order.
+ *
+ * Order matters only for readability of the emitted bundle, because none of
+ * them may import another — see {@link assertSelfContained}.
+ */
+const SHARED_FILES = ['shared/constants.js', 'shared/compat.js'];
 
 const PACKAGE = JSON.parse(await readFile(join(REPO, 'package.json'), 'utf8'));
 
@@ -96,21 +103,41 @@ function assertParses(body, label) {
   }
 }
 
+/**
+ * Refuse to inline a shared module that depends on anything.
+ *
+ * Inlining is concatenation, so a shared file with an `import` would emit a
+ * body that either fails the module-syntax gate below (if the import survives)
+ * or silently loses the binding (if it were stripped). Asserting the property
+ * that makes inlining valid — rather than relying on the gate to catch the
+ * symptom — is what keeps adding a third shared module safe.
+ */
+function assertSelfContained(text, label) {
+  const offenders = [];
+  for (const [index, line] of text.split('\n').entries()) {
+    if (/^\s*import\s/.test(line)) offenders.push(`${label}:${String(index + 1)}: ${line.trim()}`);
+  }
+  if (offenders.length > 0) {
+    throw new Error(`shared module must not import anything to be inlinable:\n${offenders.join('\n')}`);
+  }
+}
+
 /** Every artifact, as `relative path → text`. Pure; nothing is written here. */
 async function renderOutputs() {
   const outputs = new Map();
   for (const rel of HOST_FILES) {
     outputs.set(rel, await readFile(join(SRC, rel), 'utf8'));
   }
-  const shared = stripExports(await readFile(join(SRC, SHARED), 'utf8'));
-  const client = await readFile(join(SRC, 'client.js'), 'utf8');
-  const body = [
-    `// src/${SHARED} (inlined — export keywords stripped)`,
-    shared.trimEnd(),
-    '',
-    '// src/client.js',
-    client.trimEnd(),
-  ].join('\n');
+
+  const sections = [];
+  for (const rel of SHARED_FILES) {
+    const text = await readFile(join(SRC, rel), 'utf8');
+    assertSelfContained(text, rel);
+    sections.push(`// src/${rel} (inlined — export keywords stripped)`, stripExports(text).trimEnd(), '');
+  }
+  sections.push('// src/client.js', (await readFile(join(SRC, 'client.js'), 'utf8')).trimEnd());
+
+  const body = sections.join('\n');
   assertNoModuleSyntax(body, 'client');
   assertParses(body, 'client');
   outputs.set('client.js', envelope(PACKAGE.name, body));

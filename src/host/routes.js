@@ -110,9 +110,10 @@ function isSameOrigin(req) {
 /**
  * Build the request handler for this plugin's route prefix.
  *
- * @param options - `{ store, wallhaven, logger, ready }`, where `ready` is the
- *   first-load promise every request waits on so no request is ever answered
- *   from a half-loaded configuration.
+ * @param options - `{ store, wallhaven, logger, ready, compat }`, where `ready`
+ *   is the first-load promise every request waits on so no request is ever
+ *   answered from a half-loaded configuration, and `compat` is the host
+ *   capability report from `host/compat.js` (optional).
  * @returns a handler matching `WebRoute['handler']`.
  */
 export function createRouteHandler(options) {
@@ -120,6 +121,7 @@ export function createRouteHandler(options) {
   const wallhaven = options.wallhaven;
   const logger = options.logger;
   const ready = options.ready;
+  const compat = options.compat;
 
   /** What the page needs to draw its status line. */
   async function statusPayload(probe) {
@@ -133,6 +135,32 @@ export function createRouteHandler(options) {
       downloadDirectory: downloadDir,
       proxy: wallhaven.proxyInEffect(),
       probe: probe ? await wallhaven.probe() : null,
+    };
+  }
+
+  /**
+   * What the page needs to draw its compatibility section.
+   *
+   * Read live rather than captured at registration, because the route outcome
+   * is only known once the Cordis effect has run — which may be after the first
+   * request if a harness defers effects.
+   *
+   * @returns the host capability report.
+   */
+  function compatPayload() {
+    const environment = compat?.environment ?? {};
+    const routes = compat?.routes ?? { ok: false, mode: 'none', error: '宿主端未提供兼容性报告' };
+    return {
+      ok: true,
+      dshVersion: environment.dshVersion ?? '',
+      dshVersionStatus: environment.dshVersionStatus ?? 'unknown',
+      dshVersionSource: environment.dshVersionSource ?? 'unknown',
+      profile: environment.profile ?? '',
+      home: environment.home ?? '',
+      node: environment.node ?? '',
+      platform: environment.platform ?? '',
+      configFile: store.describe().file,
+      routes: { ok: routes.ok === true, mode: routes.mode, error: routes.error },
     };
   }
 
@@ -246,6 +274,15 @@ export function createRouteHandler(options) {
           return;
         }
         sendJson(res, 200, await statusPayload(search.get('probe') === '1'));
+        return;
+      }
+
+      if (pathname === '/compat') {
+        if (req.method !== 'GET') {
+          sendMethodNotAllowed(res, ['GET']);
+          return;
+        }
+        sendJson(res, 200, compatPayload());
         return;
       }
 

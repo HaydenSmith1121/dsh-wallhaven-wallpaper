@@ -115,7 +115,31 @@ const en = {
   categoryGeneral: 'General',
   categoryAnime: 'Anime',
   categoryPeople: 'People',
-  none: 'Any'
+  none: 'Any',
+  compatTitle: 'Compatibility',
+  compatHint: 'This plugin rewrites none of the shell: it occupies additive seats and calls public interfaces. These are the ones it actually found this time \u2014 after a Harness update, look here first.',
+  compatDsh: 'Harness version',
+  compatProfile: 'Profile',
+  compatNode: 'Node',
+  compatRoutes: 'Host routes',
+  compatSettingsSeat: 'Settings page seat',
+  compatSidebarSeat: 'Sidebar action seat',
+  compatLocale: 'Copy dictionaries',
+  compatTheme: 'Theme tokens',
+  compatDom: 'Background layer',
+  compatVerified: 'verified',
+  compatUntested: 'not tested on this build',
+  compatUnknownVersion: 'version not detected',
+  compatVerdictFull: 'Everything this plugin needs is present.',
+  compatVerdictPartial: 'Working, with some optional pieces missing.',
+  compatVerdictUnsupported: 'This harness is missing something required; the host half or the page cannot work.',
+  compatStatusOk: 'OK',
+  compatStatusDegraded: 'Degraded',
+  compatStatusMissing: 'Missing',
+  compatUnknown: 'unknown',
+  compatVia: 'via {mode}',
+  compatFrom: 'source: {source}',
+  compatHostDown: 'The host half did not answer \u2014 it may not be mounted.'
 };
 
 const zh = {
@@ -200,7 +224,31 @@ const zh = {
   categoryGeneral: '\u7EFC\u5408',
   categoryAnime: '\u52A8\u6F2B',
   categoryPeople: '\u4EBA\u7269',
-  none: '\u4E0D\u9650'
+  none: '\u4E0D\u9650',
+  compatTitle: '\u517C\u5BB9\u6027',
+  compatHint: '\u672C\u63D2\u4EF6\u4E0D\u6539\u5199\u5B98\u65B9\u4EE3\u7801\uFF0C\u53EA\u5360\u7528\u589E\u91CF\u5E2D\u4F4D\u5E76\u8C03\u7528\u516C\u5F00\u63A5\u53E3\u3002\u4E0B\u9762\u662F\u5B83\u8FD9\u6B21\u5B9E\u9645\u627E\u5230\u7684\u63A5\u53E3\u2014\u2014\u6362\u4E86 Harness \u7248\u672C\u4E4B\u540E\uFF0C\u5148\u770B\u8FD9\u91CC\u3002',
+  compatDsh: 'Harness \u7248\u672C',
+  compatProfile: '\u914D\u7F6E\u6863\u6848',
+  compatNode: 'Node',
+  compatRoutes: '\u5BBF\u4E3B\u8DEF\u7531',
+  compatSettingsSeat: '\u8BBE\u7F6E\u9875\u5E2D\u4F4D',
+  compatSidebarSeat: '\u4FA7\u8FB9\u680F\u5E2D\u4F4D',
+  compatLocale: '\u6587\u6848\u5B57\u5178',
+  compatTheme: '\u4E3B\u9898 token',
+  compatDom: '\u80CC\u666F\u56FE\u5C42',
+  compatVerified: '\u5DF2\u5B9E\u6D4B',
+  compatUntested: '\u672A\u5728\u6B64\u7248\u672C\u5B9E\u6D4B',
+  compatUnknownVersion: '\u672A\u8BC6\u522B\u51FA\u7248\u672C',
+  compatVerdictFull: '\u672C\u63D2\u4EF6\u9700\u8981\u7684\u63A5\u53E3\u90FD\u5728\u3002',
+  compatVerdictPartial: '\u53EF\u7528\uFF0C\u4F46\u6709\u53EF\u9009\u63A5\u53E3\u7F3A\u5931\uFF08\u529F\u80FD\u4F1A\u5C11\u4E00\u5757\uFF09\u3002',
+  compatVerdictUnsupported: '\u6B64 Harness \u7F3A\u5C11\u5FC5\u9700\u63A5\u53E3\uFF0C\u5BBF\u4E3B\u534A\u6216\u9875\u9762\u65E0\u6CD5\u5DE5\u4F5C\u3002',
+  compatStatusOk: '\u6B63\u5E38',
+  compatStatusDegraded: '\u964D\u7EA7',
+  compatStatusMissing: '\u7F3A\u5931',
+  compatUnknown: '\u672A\u77E5',
+  compatVia: '\u65B9\u5F0F\uFF1A{mode}',
+  compatFrom: '\u6765\u6E90\uFF1A{source}',
+  compatHostDown: '\u5BBF\u4E3B\u7AEF\u6CA1\u6709\u5E94\u7B54\u2014\u2014\u5BBF\u4E3B\u534A\u53EF\u80FD\u672A\u6302\u8F7D\u3002'
 };
 
 /** `{placeholder}` interpolation — the dictionaries above are the only inputs. */
@@ -315,6 +363,36 @@ const LAYER_CSS = [
 ].join('');
 
 /**
+ * The primary-button fill when the theme does not define one.
+ *
+ * Named because two places must agree on it: the button's `background` fallback
+ * and the foreground {@link readableForeground} derives from it.
+ */
+const BRAND_FALLBACK = '#4d6bfe';
+
+/**
+ * The custom property carrying the primary button's text colour.
+ *
+ * Emitted by {@link createBackground} into the dynamic stylesheet and read by
+ * `S.buttonPrimary` and `S.chipOn`. Its value is
+ * `var(--dsw-alias-label-primary-inverted, <derived>)`, so the theme's own token
+ * wins whenever it exists — see {@link readableForeground} for why the fallback
+ * has to be derived rather than hard-coded.
+ */
+const ON_BRAND_VAR = '--dsh-wh-on-brand';
+
+/**
+ * Where {@link ON_BRAND_VAR} is declared.
+ *
+ * On `body` as well as the root, for the same reason
+ * {@link surfaceOverrideSelector} exists: DSH defines its alias tokens on
+ * `body`, so a `var()` reference to one of them only resolves to the live value
+ * when it is substituted on `body` itself. Declaring it there is what lets CSS —
+ * rather than a JavaScript snapshot — answer the question at paint time.
+ */
+const ON_BRAND_SELECTOR = 'html:root, html:root body';
+
+/**
  * The wallpaper layer and the token rewrites that let it show through.
  *
  * Deliberately not a React component: the background must stay worn while the
@@ -328,36 +406,118 @@ function createBackground() {
   let scrimEl = null;
   let staticStyle = null;
   let dynamicStyle = null;
+  /** The one-shot `DOMContentLoaded` retry, while the document has no body. */
+  let bodyWaiter = null;
+  /** Watches the palette attribute, which is the only reliable "it changed" signal. */
+  let paletteObserver = null;
   /** The last configuration handed to `sync`, for theme-driven repaints. */
   let lastConfig = CONFIG_DEFAULTS;
 
-  /** Create the layer and the two style elements on first use. */
-  function ensureDom() {
+  /** The element the wallpaper layer hangs off, or `null` before `<body>`. */
+  function bodyOrNull() {
+    const body = document.body;
+    return body === null || body === undefined ? null : body;
+  }
+
+  /** Where `<style>` elements go: `<head>`, or the root if there is no head. */
+  function styleHost() {
+    return document.head ?? document.documentElement;
+  }
+
+  /**
+   * Create the two style elements on first use.
+   *
+   * Both are created together and eagerly, because the dynamic sheet always
+   * carries the primary-button colour — the settings page needs that whether or
+   * not a wallpaper is worn.
+   */
+  function ensureStyles() {
     if (staticStyle === null) {
       staticStyle = document.createElement('style');
       staticStyle.setAttribute('data-plugin-css', 'dsh-wallhaven-wallpaper');
       staticStyle.textContent = LAYER_CSS;
-      document.head.appendChild(staticStyle);
+      styleHost().appendChild(staticStyle);
     }
     if (dynamicStyle === null) {
       dynamicStyle = document.createElement('style');
       dynamicStyle.setAttribute('data-plugin-css', 'dsh-wallhaven-wallpaper-dynamic');
-      document.head.appendChild(dynamicStyle);
+      styleHost().appendChild(dynamicStyle);
     }
-    if (layer === null) {
-      layer = document.createElement('div');
-      layer.setAttribute('data-dsh-wh-layer', '');
-      layer.setAttribute('aria-hidden', 'true');
-      imageEl = document.createElement('div');
-      imageEl.setAttribute('data-dsh-wh-image', '');
-      scrimEl = document.createElement('div');
-      scrimEl.setAttribute('data-dsh-wh-scrim', '');
-      layer.appendChild(imageEl);
-      layer.appendChild(scrimEl);
-      // First child, so it precedes every piece of shell markup in paint order
-      // as well as in the DOM.
-      document.body.insertBefore(layer, document.body.firstChild);
-    }
+  }
+
+  /**
+   * Mount the wallpaper layer.
+   *
+   * @returns whether the layer is mounted. `false` means the document has no
+   *   `<body>` yet, which is a harness that materializes client modules during
+   *   parsing rather than after it — recoverable, not fatal.
+   */
+  function ensureLayer() {
+    if (layer !== null) return true;
+
+    const body = bodyOrNull();
+    if (body === null) return false;
+
+    layer = document.createElement('div');
+    layer.setAttribute('data-dsh-wh-layer', '');
+    layer.setAttribute('aria-hidden', 'true');
+    imageEl = document.createElement('div');
+    imageEl.setAttribute('data-dsh-wh-image', '');
+    scrimEl = document.createElement('div');
+    scrimEl.setAttribute('data-dsh-wh-scrim', '');
+    layer.appendChild(imageEl);
+    layer.appendChild(scrimEl);
+    // First child, so it precedes every piece of shell markup in paint order
+    // as well as in the DOM.
+    body.insertBefore(layer, body.firstChild);
+    return true;
+  }
+
+  /**
+   * Retry once the document finishes parsing.
+   *
+   * Registered at most once, and removed by {@link dispose}, so a plugin that is
+   * unloaded before the body appears does not leave a listener behind.
+   */
+  function deferUntilBody() {
+    if (bodyWaiter !== null) return;
+    bodyWaiter = () => {
+      bodyWaiter = null;
+      sync(lastConfig);
+    };
+    document.addEventListener('DOMContentLoaded', bodyWaiter, { once: true });
+  }
+
+  /**
+   * Re-read the theme whenever the palette attribute actually changes.
+   *
+   * ◆ Why `theme/change` is not enough
+   *   The event fires *before* the shell has put `data-ds-dark-theme` on `body`.
+   *   Reading the tokens in the handler therefore returns the palette that is on
+   *   its way out, and — because the override selector is chosen from the same
+   *   stale reading — the values get written under the *other* palette's
+   *   selector. That is not a cosmetic lag: in light mode the override lands on
+   *   `body[data-ds-dark-theme]`, which does not match, so the canvas token keeps
+   *   the theme's opaque value and **the wallpaper never shows through at all**.
+   *   Measured on DSH 0.1.7-rc.2, every switch was exactly one palette behind.
+   *
+   *   Observing the attribute is the fix, because the attribute *is* the thing
+   *   the reading depends on: a mutation callback runs after the change, so the
+   *   values and the selector are always derived from the palette that is
+   *   actually in force. `subtree` is what makes it work before `<body>` exists;
+   *   `attributeFilter` keeps it to the one attribute, so nothing else in the
+   *   shell can wake it.
+   */
+  function watchPalette() {
+    if (paletteObserver !== null || typeof MutationObserver !== 'function') return;
+    const root = document.documentElement;
+    if (root === null || root === undefined) return;
+    paletteObserver = new MutationObserver(() => sync(lastConfig));
+    paletteObserver.observe(root, {
+      attributes: true,
+      attributeFilter: ['data-ds-dark-theme'],
+      subtree: true,
+    });
   }
 
   /**
@@ -367,27 +527,71 @@ function createBackground() {
    * naive read would return this plugin's previous values and the alpha would
    * compound on every update until the shell was invisible.
    *
-   * @returns `{ tokens, base }` — one entry per {@link SURFACE_TOKENS} entry,
-   *   plus the canvas colour left unfaded, or `null` for a token the theme does
-   *   not define.
+   * Also reads the brand fill in the same pass, because a second
+   * `getComputedStyle` costs another style recalculation for a value that is
+   * always wanted alongside these.
+   *
+   * @returns `{ tokens, base, brand }` — one entry per {@link SURFACE_TOKENS}
+   *   entry, the canvas colour left unfaded, and the primary-button fill. Any of
+   *   them may be `''` when the theme does not define that token.
    */
   function readSurfaces() {
-    const previous = dynamicStyle.textContent;
-    dynamicStyle.textContent = '';
-    const computed = getComputedStyle(document.body);
+    const previous = dynamicStyle === null ? null : dynamicStyle.textContent;
+    if (dynamicStyle !== null) dynamicStyle.textContent = '';
+    const computed = getComputedStyle(bodyOrNull() ?? document.documentElement);
     const tokens = SURFACE_TOKENS.map((token) => ({
       name: token.name,
       lift: token.lift,
       value: computed.getPropertyValue(token.name).trim(),
     }));
     const base = computed.getPropertyValue('--dsw-alias-bg-base').trim();
-    dynamicStyle.textContent = previous;
-    return { tokens, base };
+    const brand = computed.getPropertyValue('--dsw-alias-brand-primary').trim();
+    if (dynamicStyle !== null) dynamicStyle.textContent = previous;
+    return { tokens, base, brand };
   }
 
-  /** Build the stylesheet text for one configuration. */
-  function stylesFor(config) {
-    const surfaces = readSurfaces();
+  /**
+   * The backstop colour for the primary button's text.
+   *
+   * ◆ Why this is only a backstop
+   *   The rule emitted by {@link stylesFor} reads
+   *   `var(--dsw-alias-label-primary-inverted, <this>)` — so on every harness
+   *   that defines the token, **CSS** resolves it, live, at paint time. That is
+   *   the whole point: a JS snapshot of a theme token is taken at one instant
+   *   and goes stale the moment the palette flips, and `theme/change` is not a
+   *   guarantee that the new palette is already on `body` when it fires. The
+   *   first version of this code set the property from JS and produced white
+   *   text on DSH's near-white dark-mode brand fill — 1.05:1, invisible.
+   *
+   *   This value is therefore only reached by a theme that does not define the
+   *   token at all, where any readable answer beats none.
+   *
+   * @param surfaces - a {@link readSurfaces} result.
+   * @returns a CSS colour.
+   */
+  function onBrandFallback(surfaces) {
+    const fill = surfaces.brand === '' ? BRAND_FALLBACK : surfaces.brand;
+    return readableForeground(fill, '');
+  }
+
+  /**
+   * Build the stylesheet text for one configuration.
+   *
+   * @param config - the current configuration.
+   * @param surfaces - a {@link readSurfaces} result.
+   * @param wearing - whether the wallpaper layer is mounted.
+   * @returns the CSS text.
+   */
+  function stylesFor(config, surfaces, wearing) {
+    // Always emitted, worn or not: the settings page draws primary buttons
+    // either way, and this rule is inert for every element that does not read
+    // the property.
+    const rules = [
+      `${ON_BRAND_SELECTOR}{${ON_BRAND_VAR}:var(--dsw-alias-label-primary-inverted, ${onBrandFallback(surfaces)})}`,
+    ];
+
+    if (!wearing) return rules.join('\n');
+
     const alpha = config.surfaceOpacity;
     const declarations = [];
     for (const token of surfaces.tokens) {
@@ -400,7 +604,8 @@ function createBackground() {
     // stops being propagated to the canvas and paints as a real (translucent)
     // surface above the wallpaper layer instead of underneath it.
     const opaqueBase = surfaces.base === '' ? '#ffffff' : surfaces.base;
-    const selector = surfaceOverrideSelector(document.body.hasAttribute('data-ds-dark-theme'));
+    const isDark = (bodyOrNull() ?? document.documentElement).hasAttribute('data-ds-dark-theme');
+    const selector = surfaceOverrideSelector(isDark);
 
     const position = config.position === 'center' ? 'center center' : config.position;
     const scrim = Math.max(0, Math.min(0.9, config.scrim));
@@ -409,15 +614,14 @@ function createBackground() {
     // no blur to hide.
     const bleed = config.blur > 0 ? Math.ceil(config.blur * 3) + 8 : 0;
 
-    return [
-      `html{background-color:${opaqueBase}}`,
-      declarations.length === 0 ? '' : `${selector}{${declarations.join(';')}}`,
-      `[data-dsh-wh-image]{inset:calc(-1 * ${String(bleed)}px);background-position:${position};filter:blur(${String(config.blur)}px)}`,
-      `[data-dsh-wh-scrim]{background:rgba(0,0,0,${scrim.toFixed(3)})}`,
-    ].filter((rule) => rule !== '').join('\n');
+    rules.push(`html{background-color:${opaqueBase}}`);
+    if (declarations.length > 0) rules.push(`${selector}{${declarations.join(';')}}`);
+    rules.push(`[data-dsh-wh-image]{inset:calc(-1 * ${String(bleed)}px);background-position:${position};filter:blur(${String(config.blur)}px)}`);
+    rules.push(`[data-dsh-wh-scrim]{background:rgba(0,0,0,${scrim.toFixed(3)})}`);
+    return rules.join('\n');
   }
 
-  /** Remove every trace of the wallpaper. */
+  /** Remove the wallpaper layer, keeping the style elements. */
   function clear() {
     if (layer !== null) {
       layer.remove();
@@ -425,37 +629,56 @@ function createBackground() {
       imageEl = null;
       scrimEl = null;
     }
-    if (dynamicStyle !== null) dynamicStyle.textContent = '';
+  }
+
+  /** Wear (or stop wearing) the wallpaper described by `config`. */
+  function sync(config) {
+    lastConfig = config;
+    const wallpaper = config.wallpaper;
+    const wearing = config.enabled === true && wallpaper !== null;
+
+    ensureStyles();
+    watchPalette();
+    const surfaces = readSurfaces();
+
+    if (!wearing) {
+      clear();
+      dynamicStyle.textContent = stylesFor(config, surfaces, false);
+      return;
+    }
+    if (!ensureLayer()) {
+      // No `<body>` yet. The button colour is still worth publishing, and the
+      // layer is mounted by the retry.
+      dynamicStyle.textContent = stylesFor(config, surfaces, false);
+      deferUntilBody();
+      return;
+    }
+    // `full` is the original; the browser caches it immutably, so switching
+    // back to a wallpaper you have already worn costs nothing.
+    imageEl.style.backgroundImage = `url("${imageUrl(wallpaper.full, false)}")`;
+    imageEl.setAttribute('data-fit', config.fit);
+    dynamicStyle.textContent = stylesFor(config, surfaces, true);
   }
 
   return {
-    /**
-     * Wear (or stop wearing) the wallpaper described by `config`.
-     *
-     * @param config - the current configuration.
-     */
-    sync(config) {
-      lastConfig = config;
-      const wallpaper = config.wallpaper;
-      if (config.enabled !== true || wallpaper === null) {
-        clear();
-        return;
-      }
-      ensureDom();
-      // `full` is the original; the browser caches it immutably, so switching
-      // back to a wallpaper you have already worn costs nothing.
-      imageEl.style.backgroundImage = `url("${imageUrl(wallpaper.full, false)}")`;
-      imageEl.setAttribute('data-fit', config.fit);
-      dynamicStyle.textContent = stylesFor(config);
-    },
+    /** Wear, or stop wearing, the wallpaper described by `config`. */
+    sync,
 
     /** Repaint after the theme changed underneath us. */
     refresh() {
-      this.sync(lastConfig);
+      sync(lastConfig);
     },
 
     /** Give the document back exactly as it was found. */
     dispose() {
+      if (bodyWaiter !== null) {
+        document.removeEventListener('DOMContentLoaded', bodyWaiter);
+        bodyWaiter = null;
+      }
+      if (paletteObserver !== null) {
+        paletteObserver.disconnect();
+        paletteObserver = null;
+      }
       clear();
       if (staticStyle !== null) {
         staticStyle.remove();
@@ -518,11 +741,14 @@ const S = {
     padding: '0 12px',
     border: '1px solid transparent',
     borderRadius: 6,
-    background: 'var(--dsw-alias-brand-primary, #4d6bfe)',
-    /* Not `#fff`: DSH's brand primary is a neutral high-contrast fill — near
-       black on the light palette, near white on the dark one — so the text on
-       it has to come from the paired token or it disappears on one of them. */
-    color: 'var(--dsw-alias-label-primary-inverted, #fff)',
+    background: `var(--dsw-alias-brand-primary, ${BRAND_FALLBACK})`,
+    /* Not a constant. DSH's brand primary is a neutral high-contrast fill —
+       near black on the light palette, near white on the dark one — so the text
+       on it has to invert with it. The paired token that normally does that,
+       `--dsw-alias-label-primary-inverted`, is undocumented and can be absent
+       from a theme, so `createBackground` derives this property from the live
+       pair and re-derives it on every theme change. */
+    color: `var(${ON_BRAND_VAR}, #fff)`,
     fontFamily: 'inherit',
     fontSize: 12,
     fontWeight: 600,
@@ -543,10 +769,10 @@ const S = {
   chipOn: {
     height: 24,
     padding: '0 10px',
-    border: '1px solid var(--dsw-alias-brand-primary, #4d6bfe)',
+    border: `1px solid var(--dsw-alias-brand-primary, ${BRAND_FALLBACK})`,
     borderRadius: 6,
-    background: 'var(--dsw-alias-brand-primary, #4d6bfe)',
-    color: 'var(--dsw-alias-label-primary-inverted, #fff)',
+    background: `var(--dsw-alias-brand-primary, ${BRAND_FALLBACK})`,
+    color: `var(${ON_BRAND_VAR}, #fff)`,
     fontFamily: 'inherit',
     fontSize: 12,
     fontWeight: 600,
@@ -586,7 +812,166 @@ const S = {
   previewImage: { width: 160, height: 90, objectFit: 'cover', borderRadius: 6, flexShrink: 0, background: 'var(--dsw-alias-bg-layer-2, #eee)' },
   swatches: { display: 'flex', gap: 3, marginTop: 2 },
   swatch: { width: 10, height: 10, borderRadius: 2, border: '1px solid var(--dsw-alias-border-l1)' },
+  compatRows: { display: 'flex', flexDirection: 'column', gap: 3 },
+  compatRow: { display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 11, lineHeight: '16px' },
+  compatName: { flex: '0 0 118px', color: 'var(--dsw-alias-label-secondary)' },
+  compatDot: { flex: '0 0 auto', width: 7, height: 7, borderRadius: '50%', alignSelf: 'center' },
+  compatDetail: { flex: '1 1 auto', minWidth: 0, color: 'var(--dsw-alias-label-tertiary)', overflowWrap: 'anywhere' },
+  compatGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(184px, 1fr))', gap: 6 },
+  compatCell: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 1,
+    padding: '6px 8px',
+    border: '1px solid var(--dsw-alias-border-l1)',
+    borderRadius: 6,
+    minWidth: 0,
+  },
+  compatKey: { fontSize: 10, lineHeight: '14px', color: 'var(--dsw-alias-label-tertiary)' },
+  compatValue: { fontSize: 11, lineHeight: '16px', color: 'var(--dsw-alias-label-primary)', overflowWrap: 'anywhere' },
 };
+
+/** Status → colour, for the dot and the verdict line. */
+const COMPAT_COLOR = {
+  ok: 'var(--dsw-alias-state-success-primary, #22c55e)',
+  degraded: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
+  missing: 'var(--dsw-alias-state-error-primary, #d33)',
+};
+
+/** Verdict → copy key. */
+const COMPAT_VERDICT_KEY = {
+  full: 'compatVerdictFull',
+  partial: 'compatVerdictPartial',
+  unsupported: 'compatVerdictUnsupported',
+};
+
+/**
+ * Which language this page should read in when it has to translate locally.
+ *
+ * Only consulted by the {@link createTranslator} fallback — a harness whose
+ * locale service works never reaches it. `navigator.language` is the second
+ * signal because it exists independently of DSH, so the fallback still picks a
+ * sensible language on a harness that renamed or removed the locale service.
+ *
+ * @param locale - the `ctx.locale` service, if any.
+ * @returns a locale id such as `zh`, `zh-CN`, or `en`.
+ */
+function preferredLocale(locale) {
+  try {
+    const snapshot = typeof locale?.getLocale === 'function' ? locale.getLocale() : null;
+    for (const key of ['locale', 'id', 'current', 'language']) {
+      const value = snapshot === null || snapshot === undefined ? undefined : snapshot[key];
+      if (typeof value === 'string' && value !== '') return value;
+    }
+  } catch {
+    // Fall through to the browser's own answer.
+  }
+  const language = typeof navigator === 'object' && navigator !== null ? navigator.language : '';
+  return typeof language === 'string' && language.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+}
+
+/**
+ * What the live document can tell us about the theme right now.
+ *
+ * A presence probe, not a value probe: it answers "does this harness still
+ * define the tokens the wallpaper shows through", which is the question that
+ * changes across DSH versions. Values are read for real by
+ * {@link createBackground} when it paints.
+ *
+ * @returns `{ surfaces, total, brand, dark, body }`.
+ */
+function probeTheme() {
+  const root = document.body ?? document.documentElement;
+  let computed = null;
+  try {
+    computed = getComputedStyle(root);
+  } catch {
+    computed = null;
+  }
+  const read = (name) => (computed === null ? '' : computed.getPropertyValue(name).trim());
+  return {
+    surfaces: SURFACE_TOKENS.filter((token) => read(token.name) !== '').length,
+    total: SURFACE_TOKENS.length,
+    brand: read('--dsw-alias-brand-primary') !== '',
+    dark: root !== null && root !== undefined && root.hasAttribute('data-ds-dark-theme'),
+    body: document.body !== null && document.body !== undefined,
+  };
+}
+
+/**
+ * The compatibility section: which DSH is running, and what it accepted.
+ *
+ * @param props - `{ t, compat }`, where `compat` is the live state recorded by
+ *   `apply()` and re-read through the store on every update.
+ */
+function CompatSection(props) {
+  const t = props.t;
+  const state = useStoreValue(props.compat ?? EMPTY_COMPAT);
+
+  const host = state.host;
+  const rows = [];
+
+  rows.push(compatEntry(
+    'routes',
+    t('compatRoutes'),
+    host === null ? 'missing' : host.routes.ok === true ? 'ok' : 'missing',
+    host === null
+      ? t('compatHostDown')
+      : host.routes.ok === true
+        ? translate(t, 'compatVia', { mode: host.routes.mode })
+        : host.routes.error,
+  ));
+  rows.push(compatEntry('settings', t('compatSettingsSeat'), state.settings.status, state.settings.detail));
+  rows.push(compatEntry('sidebar', t('compatSidebarSeat'), state.sidebar.status, state.sidebar.detail));
+  rows.push(compatEntry('locale', t('compatLocale'), state.locale.status, state.locale.detail));
+
+  const theme = probeTheme();
+  rows.push(compatEntry(
+    'theme',
+    t('compatTheme'),
+    theme.surfaces === theme.total ? 'ok' : theme.surfaces > 0 ? 'degraded' : 'missing',
+    `${String(theme.surfaces)} / ${String(theme.total)} · ${theme.dark ? 'dark' : 'light'}${theme.brand ? ' · brand' : ''}`,
+  ));
+  rows.push(compatEntry(
+    'dom',
+    t('compatDom'),
+    theme.body ? 'ok' : 'degraded',
+    theme.body ? 'body' : 'body 尚未出现',
+  ));
+
+  const summary = summarizeCompat(rows);
+  const versionLabel = host === null || host.dshVersion === ''
+    ? t('compatUnknownVersion')
+    : host.dshVersionStatus === 'verified'
+      ? t('compatVerified')
+      : t('compatUntested');
+
+  const cells = host === null
+    ? []
+    : [
+      { key: 'compatDsh', value: `${host.dshVersion === '' ? t('compatUnknown') : host.dshVersion} · ${versionLabel}` },
+      { key: 'compatProfile', value: host.profile === '' ? t('compatUnknown') : host.profile },
+      { key: 'compatNode', value: `${host.node === '' ? t('compatUnknown') : host.node} · ${host.platform}` },
+    ];
+
+  return h('div', { style: S.section },
+    h('div', { style: S.legend }, t('compatTitle')),
+    h('p', { style: S.hint }, t('compatHint')),
+    cells.length === 0
+      ? null
+      : h('div', { style: S.compatGrid }, cells.map((cell) => h('div', { key: cell.key, style: S.compatCell },
+        h('span', { style: S.compatKey }, t(cell.key)),
+        h('span', { style: S.compatValue }, cell.value)))),
+    h('p', { style: { ...S.hint, color: COMPAT_COLOR[summary.verdict === 'full' ? 'ok' : summary.verdict === 'partial' ? 'degraded' : 'missing'] } },
+      t(COMPAT_VERDICT_KEY[summary.verdict])),
+    h('div', { style: S.compatRows }, rows.map((row) => h('div', { key: row.id, style: S.compatRow },
+      h('span', { style: S.compatName }, row.label),
+      h('span', { style: { ...S.compatDot, background: COMPAT_COLOR[row.status] } }),
+      h('span', { style: S.compatDetail }, row.detail === '' ? t(`compatStatus${row.status.charAt(0).toUpperCase()}${row.status.slice(1)}`) : row.detail)))),
+    host === null || host.dshVersionSource === 'unknown'
+      ? null
+      : h('p', { style: S.hint }, translate(t, 'compatFrom', { source: host.dshVersionSource })));
+}
 
 /** A labelled control row. */
 function Field(props) {
@@ -1061,7 +1446,10 @@ function WallhavenSection(props) {
         })),
       status === null
         ? null
-        : h('p', { style: S.hint }, translate(t, 'pathsHint', { file: status.configFile }))));
+        : h('p', { style: S.hint }, translate(t, 'pathsHint', { file: status.configFile }))),
+
+    /* ── what this harness actually gave us ─────────────────────────────── */
+    h(CompatSection, { t, compat: props.compat }));
 }
 
 /* ── the sidebar shortcut ─────────────────────────────────────────────────── */
@@ -1127,17 +1515,64 @@ function ShuffleAction(props) {
 /* ── plugin entry ─────────────────────────────────────────────────────────── */
 
 const name = 'dsh-wallhaven-wallpaper';
+
+/*
+ * `slots` and `locale` are the two client services this half uses. Declaring
+ * them keeps Cordis from applying the plugin before they exist — but it is not
+ * a promise that either has the shape this file expects, which is why every use
+ * below still goes through a probe that can fail on its own.
+ */
 const inject = ['slots', 'locale'];
+
+/** One capability row's worth of state, as the page reads it. */
+function surfaceState(ok, detail) {
+  return { status: ok ? 'ok' : 'missing', detail };
+}
+
+/**
+ * The live compatibility state, as an observable the page can render.
+ *
+ * Filled in while `apply()` runs and completed when the host half answers, so
+ * the page shows what actually happened rather than what was expected.
+ *
+ * @returns the store handed to {@link CompatSection}.
+ */
+function createCompatState() {
+  return createStore({
+    host: null,
+    settings: surfaceState(false, '尚未注册'),
+    sidebar: surfaceState(false, '尚未注册'),
+    locale: surfaceState(false, '尚未注册'),
+  });
+}
+
+/**
+ * What {@link CompatSection} reads when it was rendered without a state store.
+ *
+ * The seat always injects one, so this is unreachable in practice — but the
+ * section is the thing that *reports* breakage, and a report that itself throws
+ * on a harness that passed props differently would be the least useful possible
+ * failure.
+ */
+const EMPTY_COMPAT = createCompatState();
 
 function apply(ctx) {
   const store = createStore(CONFIG_DEFAULTS);
   const background = createBackground();
+  const compat = createCompatState();
 
   ctx.effect(() => () => background.dispose(), 'dsh-wallhaven-wallpaper: background layer');
 
   // Whatever the theme does — preference switched, registry updated, the OS
   // colour scheme changed while the preference is `system` — the surface
   // colours we read and rewrote are stale, so read them again.
+  //
+  // This event alone is not sufficient, and that is not a harness bug: it fires
+  // before the shell has moved `data-ds-dark-theme` onto `body`, so the handler
+  // would read the outgoing palette. `createBackground` therefore also watches
+  // that attribute and re-reads when it actually changes — see `watchPalette`.
+  // `theme/change` is an ordinary emit, so a harness without it simply never
+  // fires this, which is the degradation we want and needs no probe.
   ctx.on('theme/change', () => background.refresh());
 
   store.subscribe(() => background.sync(store.get()));
@@ -1148,28 +1583,72 @@ function apply(ctx) {
     if (response !== null && response.ok === true) store.adopt(response.config);
   });
 
-  try {
-    ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-wallhaven-wallpaper: copy dictionaries');
-    const t = ctx.locale.bind(NS);
+  // The host half reports the DSH version and its own route outcome. It is
+  // fetched rather than assumed, so a host half that never mounted shows up as
+  // such instead of being silently misreported.
+  getJson(route('/compat')).then((response) => {
+    compat.adopt({
+      ...compat.get(),
+      host: response !== null && response.ok === true ? response : null,
+    });
+  });
 
-    ctx.slots.inject('settings.section', () => ctx.slots.register({
-      name: 'settings.section',
-      id: 'wallhaven-wallpaper',
-      order: 41,
-      label: () => t('nav'),
-      inject: () => ({ t, store }),
-    }, WallhavenSection));
+  /* ── copy ──────────────────────────────────────────────────────────────── */
 
-    ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
-      name: 'sidebar.footer.action',
-      id: 'wallhaven-shuffle',
-      order: 20,
-      label: () => t('quickLabel'),
-      inject: () => ({ t, store }),
-    }, ShuffleAction));
-  } catch (error) {
-    console.error('[dsh-wallhaven-wallpaper] settings surface failed to load (nothing else is affected):', error);
+  const dictionaries = { zh, en };
+  const registration = registerLocaleDictionary(ctx.locale, NS, dictionaries);
+  if (registration.ok) {
+    ctx.effect(() => registration.dispose, 'dsh-wallhaven-wallpaper: copy dictionaries');
+  } else {
+    console.warn(`[${name}] 文案字典未注册，页面将使用插件自带的兜底文案：${registration.error}`);
   }
+
+  // `createTranslator` prefers the harness's own `bind`, so a working locale
+  // service keeps live language switching; the fallback keeps the page readable
+  // when it does not.
+  const translator = createTranslator(ctx.locale, NS, dictionaries, preferredLocale(ctx.locale));
+  const t = translator.t;
+
+  compat.adopt({
+    ...compat.get(),
+    locale: surfaceState(registration.ok, registration.ok ? registration.mode : registration.error),
+  });
+
+  /* ── the two seats ─────────────────────────────────────────────────────── */
+
+  // Registered independently on purpose. They are additive seats in different
+  // parts of the shell, and a harness that no longer declares one of them must
+  // still get the other — the settings page in particular, because that is
+  // where the compatibility report is read.
+  const settingsSeat = registerSlotSurface(ctx.slots, 'settings.section', {
+    id: 'wallhaven-wallpaper',
+    order: 41,
+    label: () => t('nav'),
+    inject: () => ({ t, store, compat }),
+  }, WallhavenSection);
+  if (settingsSeat.ok) {
+    ctx.effect(() => settingsSeat.dispose, 'dsh-wallhaven-wallpaper: settings page');
+  } else {
+    console.error(`[${name}] 设置页席位未注册（其余功能不受影响）：${settingsSeat.error}`);
+  }
+
+  const sidebarSeat = registerSlotSurface(ctx.slots, 'sidebar.footer.action', {
+    id: 'wallhaven-shuffle',
+    order: 20,
+    label: () => t('quickLabel'),
+    inject: () => ({ t, store }),
+  }, ShuffleAction);
+  if (sidebarSeat.ok) {
+    ctx.effect(() => sidebarSeat.dispose, 'dsh-wallhaven-wallpaper: sidebar action');
+  } else {
+    console.warn(`[${name}] 侧边栏席位未注册（设置页不受影响）：${sidebarSeat.error}`);
+  }
+
+  compat.adopt({
+    ...compat.get(),
+    settings: surfaceState(settingsSeat.ok, settingsSeat.ok ? 'settings.section' : settingsSeat.error),
+    sidebar: surfaceState(sidebarSeat.ok, sidebarSeat.ok ? 'sidebar.footer.action' : sidebarSeat.error),
+  });
 }
 
 module.exports = { apply, inject, name };

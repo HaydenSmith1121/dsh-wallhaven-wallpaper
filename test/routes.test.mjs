@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { ROUTE_BASE } from '../src/shared/constants.js';
+import { createHostCompat } from '../src/host/compat.js';
 import { createRouteHandler } from '../src/host/routes.js';
 import { createWallhaven } from '../src/host/wallhaven.js';
 import { openConfigStore } from '../src/host/store.js';
@@ -42,6 +43,7 @@ async function harness(routes, patch = {}, options = {}) {
     wallhaven,
     logger: undefined,
     ready: options.ready,
+    compat: options.compat,
   });
   return {
     store,
@@ -311,6 +313,62 @@ test('every request waits for the first configuration load', async () => {
     release();
     const result = await pending;
     assert.equal(result.json.config.query, 'wildlife');
+  } finally {
+    await ctx.cleanup();
+  }
+});
+
+test('GET /compat reports the running DSH and the route outcome', async () => {
+  const compat = createHostCompat({
+    dshVersion: '0.1.7-rc.2',
+    dshVersionStatus: 'verified',
+    dshVersionSource: 'loader',
+    profile: 'desktop',
+    home: 'C:\\Users\\x\\.dsh',
+    node: '24.18.1',
+    platform: 'win32',
+  });
+  compat.setRoutes({ ok: true, mode: 'disposer', error: '' });
+
+  const ctx = await harness([], {}, { compat });
+  try {
+    const result = await ctx.get('/compat');
+    assert.equal(result.status, 200);
+    assert.equal(result.json.ok, true);
+    assert.equal(result.json.dshVersion, '0.1.7-rc.2');
+    assert.equal(result.json.dshVersionStatus, 'verified');
+    assert.equal(result.json.profile, 'desktop');
+    assert.deepEqual(result.json.routes, { ok: true, mode: 'disposer', error: '' });
+    // The page shows the config path here too, so a user reporting a problem has
+    // one place to copy it from.
+    assert.match(result.json.configFile, /dsh-wallhaven-wallpaper/u);
+  } finally {
+    await ctx.cleanup();
+  }
+});
+
+test('GET /compat is a readable report even when the host half has no compat state', async () => {
+  // A harness that never reaches the route registration, or a test double built
+  // without it, must still produce JSON the page can render rather than a 500.
+  const ctx = await harness([]);
+  try {
+    const result = await ctx.get('/compat');
+    assert.equal(result.status, 200);
+    assert.equal(result.json.ok, true);
+    assert.equal(result.json.dshVersionStatus, 'unknown');
+    assert.equal(result.json.routes.ok, false);
+    assert.equal(typeof result.json.routes.error, 'string');
+  } finally {
+    await ctx.cleanup();
+  }
+});
+
+test('GET /compat is read-only', async () => {
+  const ctx = await harness([]);
+  try {
+    const result = await ctx.post('/compat', {});
+    assert.equal(result.status, 405);
+    assert.equal(result.headers.allow, 'GET');
   } finally {
     await ctx.cleanup();
   }
