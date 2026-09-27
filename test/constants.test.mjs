@@ -41,11 +41,14 @@ test('flagsToMask round-trips and always emits the full width', () => {
   assert.deepEqual(maskToFlags(flagsToMask([false, true, false]), 3), [false, true, false]);
 });
 
-test('normalizeConfig refuses to store a purity without SFW', () => {
-  // The API would happily accept `011`; a plugin must not persist it.
-  const config = normalizeConfig({ purity: '011' }, CONFIG_DEFAULTS);
-  assert.equal(config.purity, '111');
-  assert.equal(maskToFlags(normalizeConfig({ purity: '000' }, CONFIG_DEFAULTS).purity, 3)[0], true);
+test('normalizeConfig lets SFW be turned off, but not everything at once', () => {
+  // Searching sketchy-only is a legitimate choice and wallhaven's API expresses
+  // it directly, so `011` is stored as asked.
+  assert.equal(normalizeConfig({ purity: '011' }, CONFIG_DEFAULTS).purity, '011');
+  assert.equal(normalizeConfig({ purity: '001' }, CONFIG_DEFAULTS).purity, '001');
+  // What is refused is an empty selection: wallhaven cannot express "no
+  // purity" and would return nothing, which reads as "search is broken".
+  assert.equal(normalizeConfig({ purity: '000' }, CONFIG_DEFAULTS).purity, '100');
 });
 
 test('normalizeConfig refuses to store an empty category selection', () => {

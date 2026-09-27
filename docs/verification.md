@@ -8,7 +8,7 @@
 
 | 命令 | 规模 | 它证明什么 |
 |---|---|---|
-| `npm test` | 99 项 | 纯逻辑与宿主端：配置校验、搜索参数、响应解析、颜色换算与对比度、代理判定、配置存储、路由分发与安全边界，以及**换版本才会走到的容错分支** |
+| `npm test` | 109 项 | 纯逻辑与宿主端：配置校验、搜索参数、响应解析、颜色换算与对比度、代理判定、**本机代理探测**、配置存储、路由分发与安全边界，以及**换版本才会走到的容错分支** |
 | `npm run verify:live` | 15 项 | 真的连 wallhaven：CONNECT 隧道、搜索、缩略图落盘缓存、下载原图、随机换图 |
 | `npm run verify:client` | 24 项 | 真浏览器 + 真主题 token + 真宿主端：bundle 能否被 carrier 装载、页面能否渲染、背景与 token 改写是否成立 |
 | `npm run verify:gui` | 21 项 | 真 `dsh web` 实例：行是否被装载、bundle 是否被下发、设置外壳里是否真的出现这一页、壁纸是否真的铺上 |
@@ -18,7 +18,7 @@
 ## 一、单元与集成（`npm test`）
 
 ```
-ℹ tests 99   ℹ pass 99   ℹ fail 0
+ℹ tests 109   ℹ pass 109   ℹ fail 0
 ```
 
 其中 `test/compat.test.mjs` 是 0.1.7-rc.2 那一轮补上的 30 项，覆盖的都是**只有换版本才会
@@ -30,7 +30,8 @@
 
 覆盖到的、值得单独点名的用例：
 
-- **`purity` 存不下没有 SFW 的组合**：`011` 会被改写成 `111`。API 本身接受 `011`，但插件不该持久化它。
+- **`purity` 三个都能关，但不能全关**：`011` 原样存下（只搜 sketchy 是正当选择），
+  `000` 会被退回 `100`（wallhaven 表达不了「一个分级都不要」，空结果看起来像「搜索坏了」）。
 - **`categories` 存不下空集**：wallhaven 无法表达「一个分类都不选」，会返回空结果，看起来像「搜索坏了」。
 - **图片域名白名单**：`https://w.wallhaven.cc.evil.example/x.jpg`、`https://w.wallhaven.cc@evil.example/x.jpg`、
   `http://w.wallhaven.cc/x.jpg` 全部拒绝；被拒绝时**不开 socket**（用假 transport 断言调用次数为 0）。
@@ -344,6 +345,84 @@ dark:  brand=#f9fafb  →  color rgb(53,54,56)   on rgb(249,250,251) = 11.57:1
 > 两个 bug 都是「只在真实 GUI 里、真实切一次主题」才看得见的。
 > 单测、`build:check`、`--dump-config` 全都不会报。
 
+## 八、连通性优先 + SFW 可关（来自真实使用反馈）
+
+真实使用里报了两个问题：**wallhaven 总是连不上**（截图里两次「请求超时（20000ms）」），
+以及 **SFW 关不掉**。查下来第一条的根因不在网络：
+
+```
+Get-NetTCPConnection -State Listen | Where LocalPort -in 7890,7897,...
+  → 127.0.0.1:7897   verge-mihomo
+$env:HTTPS_PROXY → （空）
+```
+
+机器上跑着 mihomo，但 DSH 是从图形界面启动的，**没有继承 `HTTPS_PROXY`**；插件于是直连一个
+被污染的 DNS，20 秒后超时。所以这一轮做的不是「把超时调短」，而是**让插件自己找到那条出路**。
+
+### 连通性测试现在会做什么
+
+1. 先测当前路由（**8 秒**预算，不是 20 —— 一个要 20 秒才说「不行」的测试不是测试）。
+2. 当前路由是空（既没填也没环境变量）且失败时，扫本机常见 HTTP 代理端口。
+   扫描**先做 TCP connect**（400 ms，并发），只对真的在监听的端口发真实 API 请求，
+   所以「没有代理」这种情况几百毫秒就结束，而不是每个端口等一次超时。
+3. 找到能通的那条，连同它一起报给页面，页面给一个「使用」按钮。
+
+真实实例上的输出（无 `HTTPS_PROXY`，mihomo 在 7897）：
+
+```
+GET /status?diagnose=1                     耗时 6.1 s（其中 ~5 s 是直连那次失败）
+{"probe":{"ok":false, ... "source":"discovered",
+          "discovered":"http://127.0.0.1:7897",
+          "discovery":{"proxy":"http://127.0.0.1:7897","latencyMs":1013,"total":625641},
+          "candidates":[{"proxy":"http://127.0.0.1:7897","ok":true,"latencyMs":1013}]}}
+```
+
+点一下「使用」之后再搜，**0.5 s 返回 24 张**；`purity=011` 的搜索返回的 `purity` 全是 `sketchy`
+——证明 SFW 是真的没发出去，而不是界面上的样子。
+
+### 浏览器里逐条验的（Chrome 153 headless + 裸 CDP）
+
+```
+OK  discovered proxy is offered — 检测到本机代理可用：http://127.0.0.1:7897 · 668 ms
+OK  the failure is stated, not hidden
+OK  search is skipped with an actionable message — 5815 ms      ← 原来要等 20 s 再报同一句话
+OK  the offer is clickable
+OK  status turns reachable — wallhaven 可达 · 650 ms
+OK  thumbnails rendered — 24 images
+OK  SFW is enabled / SFW can be turned off / the other chip stayed on
+OK  the host stored SFW off — 010
+OK  at least one purity stays on
+OK  the refusal is explained, not silent
+OK  no console errors
+```
+
+### 这一轮抓到的 bug：`diagnose` 把「找到的」当成「在用的」
+
+第一版 `diagnose()` 在发现可用代理后，直接把**赢家**的结果当成主字段返回：
+
+```js
+return { ...winner, source: 'discovered', ... };   // ← ok:true, proxy:'http://127.0.0.1:7897'
+```
+
+于是状态行显示「wallhaven 可达」，而实际配置仍然是直连；更糟的是搜索闸门读到 `probe.ok === true`
+直接放行，搜索又走那条死路由，**又挂了 20 秒**。浏览器验证里一次就露出来了：
+
+```
+FAIL  the failure is stated, not hidden
+FAIL  search is skipped with an actionable message — 30227 ms
+```
+
+修法是把主字段永远留给**当前路由**：「我配的这条通不通」才是状态行要回答、搜索闸门要判断的问题，
+而一个只是被找到的代理还没有生效。找到的那条单独放在 `discovered` / `discovery` 里：
+
+```js
+return { ...first, source: 'discovered', discovered: winner.proxy,
+         discovery: { proxy: winner.proxy, latencyMs: winner.latencyMs } };
+```
+
+> 单测当时是**绿的** —— 因为它断言的就是那个错误契约（`result.ok === true`）。
+> 是我照着实现写测试，而不是照着「这个字段是什么意思」写测试。改完契约后单测也一并改了。
+
 ## 没验证到的
 
 - **NSFW / sketchy 与账号相关接口**：需要一个真实 API Key，本次没有使用。相关分支（401 的措辞、
@@ -352,5 +431,7 @@ dark:  brand=#f9fafb  →  color rgb(53,54,56)   on rgb(249,250,251) = 11.57:1
 - **非回环部署**：路由的写操作只做同源校验，没有身份认证——这是 DSH 自身的姿态，README 里已写明。
 - **`0.1.6-alpha.1` 之外的旧版本**：容错分支有单测，但没有把插件真的装到那些版本上跑过。
   能力探测层的作用正是让这种情况**可诊断**（兼容性面板会列出缺哪一块），而不是保证它一定能用。
-- **wallhaven 真实取图（第七节）**：隔离实例没有配代理，所以那一轮只验证了 token 改写与图层挂载，
-  图片本身是 502。真实取图由第二节（`verify:live`）覆盖。
+- **wallhaven 真实取图（第七节）**：那一轮的隔离实例没有配代理，所以只验证了 token 改写与图层挂载，
+  图片本身是 502。真实取图由第二节（`verify:live`）和第八节（走 mihomo 的 24 张缩略图）覆盖。
+- **自动探测的端口表**：只覆盖了常见客户端的默认 HTTP 端口。非默认端口、或只开 SOCKS 的客户端，
+  仍然要手填 —— 探测失败时页面会说「本机常见代理端口都没有应答」，而不是假装找过了。

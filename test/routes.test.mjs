@@ -80,11 +80,11 @@ test('POST /config validates through the store and answers with the stored value
   try {
     const result = await ctx.post('/config', { patch: { purity: '011', blur: 9999 } });
     assert.equal(result.status, 200);
-    // SFW is forced back on and the blur is clamped: the page is told what was
-    // actually stored, not what it asked for.
-    assert.equal(result.json.config.purity, '111');
+    // The purity is stored as asked (SFW is toggleable) and the blur is clamped:
+    // the page is told what was actually stored, not what it asked for.
+    assert.equal(result.json.config.purity, '011');
     assert.equal(result.json.config.blur, 60);
-    assert.equal(ctx.store.get().purity, '111');
+    assert.equal(ctx.store.get().purity, '011');
   } finally {
     await ctx.cleanup();
   }
@@ -269,6 +269,34 @@ test('GET /status?probe=1 actually reaches wallhaven', async () => {
     const result = await ctx.get('/status?probe=1');
     assert.equal(result.json.probe.ok, true);
     assert.equal(ctx.transport.calls.length, 1);
+  } finally {
+    await ctx.cleanup();
+  }
+});
+
+test('GET /status?diagnose=1 names the route it tested', async () => {
+  const ctx = await harness([{ match: '/api/v1/search', body: searchPayload(1) }]);
+  try {
+    const result = await ctx.get('/status?diagnose=1');
+    assert.equal(result.status, 200);
+    assert.equal(result.json.probe.ok, true);
+    // The page branches on `source` to decide whether to offer a discovered
+    // proxy, so it has to be present and meaningful on the success path too.
+    assert.equal(result.json.probe.source, 'direct');
+    assert.deepEqual(result.json.probe.candidates, []);
+    assert.equal(result.json.probe.discovered, '');
+    assert.equal(result.json.probe.discovery, null);
+  } finally {
+    await ctx.cleanup();
+  }
+});
+
+test('GET /status without a test flag does not touch the network', async () => {
+  const ctx = await harness([{ match: '/api/v1/search', body: searchPayload(1) }]);
+  try {
+    const result = await ctx.get('/status');
+    assert.equal(result.json.probe, null);
+    assert.equal(ctx.transport.calls.length, 0);
   } finally {
     await ctx.cleanup();
   }

@@ -56,7 +56,7 @@ const en = {
   searchHint: 'A minimum resolution keeps phone-shaped art out of a desktop wallpaper.',
   categoryLabel: 'Categories',
   purityLabel: 'Purity',
-  purityNote: 'Sketchy and NSFW need a wallhaven API key.',
+  purityNote: 'Sketchy and NSFW need a wallhaven API key. At least one has to stay on.',
   sortingLabel: 'Sort by',
   rangeLabel: 'Top range',
   atleastLabel: 'At least',
@@ -91,7 +91,7 @@ const en = {
   apiKeyHint: 'Sent to wallhaven as a header, never in a URL. Stored in this plugin\u2019s own file.',
   proxyLabel: 'Proxy',
   proxyPlaceholder: 'optional \u2014 e.g. http://127.0.0.1:7897',
-  proxyHint: 'Empty uses HTTPS_PROXY from the environment. Only http/https proxies are supported.',
+  proxyHint: 'Empty reads HTTPS_PROXY from the environment, then looks for a local proxy on the usual ports. Only http/https proxies are supported.',
   pathsHint: 'Configuration: {file}',
   quickLabel: 'Shuffle a new wallpaper',
   quickHint: 'Wear a random result of the current search',
@@ -139,7 +139,12 @@ const en = {
   compatUnknown: 'unknown',
   compatVia: 'via {mode}',
   compatFrom: 'source: {source}',
-  compatHostDown: 'The host half did not answer \u2014 it may not be mounted.'
+  compatHostDown: 'The host half did not answer \u2014 it may not be mounted.',
+  unreachable: 'wallhaven is unreachable, so this search was skipped. Fix the connection first \u2014 see the status line above, or press Re-check.',
+  useProxy: 'Use {proxy}',
+  proxyFound: 'Found a working local proxy: {proxy} \xB7 {ms} ms',
+  proxyNoneFound: 'No local proxy answered on the usual ports.',
+  purityKeepOne: 'At least one purity has to stay on \u2014 with none selected, wallhaven returns nothing.'
 };
 
 const zh = {
@@ -165,7 +170,7 @@ const zh = {
   searchHint: '\u8BBE\u4E00\u4E2A\u6700\u4F4E\u5206\u8FA8\u7387\uFF0C\u53EF\u4EE5\u628A\u624B\u673A\u5C3A\u5BF8\u7684\u56FE\u6321\u5728\u684C\u9762\u58C1\u7EB8\u4E4B\u5916\u3002',
   categoryLabel: '\u5206\u7C7B',
   purityLabel: '\u5206\u7EA7',
-  purityNote: 'Sketchy \u4E0E NSFW \u9700\u8981 wallhaven API Key\u3002',
+  purityNote: 'Sketchy \u4E0E NSFW \u9700\u8981 wallhaven API Key\uFF1B\u4E09\u4E2A\u81F3\u5C11\u8981\u7559\u4E00\u4E2A\u3002',
   sortingLabel: '\u6392\u5E8F',
   rangeLabel: '\u699C\u5355\u533A\u95F4',
   atleastLabel: '\u6700\u4F4E\u5206\u8FA8\u7387',
@@ -200,7 +205,7 @@ const zh = {
   apiKeyHint: '\u4EE5\u8BF7\u6C42\u5934\u53D1\u7ED9 wallhaven\uFF0C\u4E0D\u4F1A\u51FA\u73B0\u5728 URL \u91CC\uFF1B\u5B58\u5728\u672C\u63D2\u4EF6\u81EA\u5DF1\u7684\u914D\u7F6E\u6587\u4EF6\u4E2D\u3002',
   proxyLabel: '\u4EE3\u7406',
   proxyPlaceholder: '\u53EF\u9009 \u2014\u2014 \u4F8B\u5982 http://127.0.0.1:7897',
-  proxyHint: '\u7559\u7A7A\u65F6\u4F7F\u7528\u73AF\u5883\u53D8\u91CF HTTPS_PROXY\u3002\u4EC5\u652F\u6301 http/https \u4EE3\u7406\u3002',
+  proxyHint: '\u7559\u7A7A\u65F6\u5148\u8BFB\u73AF\u5883\u53D8\u91CF HTTPS_PROXY\uFF0C\u518D\u81EA\u52A8\u63A2\u6D4B\u672C\u673A\u5E38\u89C1\u4EE3\u7406\u7AEF\u53E3\u3002\u4EC5\u652F\u6301 http/https \u4EE3\u7406\u3002',
   pathsHint: '\u914D\u7F6E\u6587\u4EF6\uFF1A{file}',
   quickLabel: '\u6362\u4E00\u5F20',
   quickHint: '\u4ECE\u5F53\u524D\u641C\u7D22\u6761\u4EF6\u91CC\u968F\u673A\u6362\u4E00\u5F20\u58C1\u7EB8',
@@ -248,7 +253,12 @@ const zh = {
   compatUnknown: '\u672A\u77E5',
   compatVia: '\u65B9\u5F0F\uFF1A{mode}',
   compatFrom: '\u6765\u6E90\uFF1A{source}',
-  compatHostDown: '\u5BBF\u4E3B\u7AEF\u6CA1\u6709\u5E94\u7B54\u2014\u2014\u5BBF\u4E3B\u534A\u53EF\u80FD\u672A\u6302\u8F7D\u3002'
+  compatHostDown: '\u5BBF\u4E3B\u7AEF\u6CA1\u6709\u5E94\u7B54\u2014\u2014\u5BBF\u4E3B\u534A\u53EF\u80FD\u672A\u6302\u8F7D\u3002',
+  unreachable: '\u8FDE\u4E0D\u4E0A wallhaven\uFF0C\u8FD9\u6B21\u641C\u7D22\u5DF2\u8DF3\u8FC7\u3002\u5148\u89E3\u51B3\u8FDE\u901A\u6027\u2014\u2014\u770B\u4E0A\u9762\u7684\u72B6\u6001\u884C\uFF0C\u6216\u70B9\u300C\u91CD\u65B0\u68C0\u6D4B\u300D\u3002',
+  useProxy: '\u4F7F\u7528 {proxy}',
+  proxyFound: '\u68C0\u6D4B\u5230\u672C\u673A\u4EE3\u7406\u53EF\u7528\uFF1A{proxy} \u00B7 {ms} ms',
+  proxyNoneFound: '\u672C\u673A\u5E38\u89C1\u4EE3\u7406\u7AEF\u53E3\u90FD\u6CA1\u6709\u5E94\u7B54\u3002',
+  purityKeepOne: '\u5206\u7EA7\u81F3\u5C11\u8981\u4FDD\u7559\u4E00\u4E2A\u2014\u2014\u4E09\u4E2A\u90FD\u4E0D\u9009\uFF0Cwallhaven \u4F1A\u8FD4\u56DE\u7A7A\u7ED3\u679C\u3002'
 };
 
 /** `{placeholder}` interpolation — the dictionaries above are the only inputs. */
@@ -1085,11 +1095,25 @@ function WallhavenSection(props) {
     return true;
   }, [store, t]);
 
+  /**
+   * The last connectivity result, as a ref.
+   *
+   * A ref rather than state because {@link search} needs the value at the moment
+   * it runs, not the one captured when its `useCallback` was built — and a stale
+   * "reachable" is exactly the thing that would let a search hang for twenty
+   * seconds again.
+   */
+  const probeRef = React.useRef(null);
+
+  /** Test the connection, and look for a local proxy when none is configured. */
   const probe = React.useCallback(async () => {
     setProbing(true);
-    const response = await getJson(route('/status', new URLSearchParams({ probe: '1' })));
+    const response = await getJson(route('/status', new URLSearchParams({ diagnose: '1' })));
     setProbing(false);
-    if (response !== null && response.ok === true) setStatus(response);
+    if (response !== null && response.ok === true) {
+      setStatus(response);
+      probeRef.current = response.probe ?? null;
+    }
   }, []);
 
   React.useEffect(() => {
@@ -1099,10 +1123,47 @@ function WallhavenSection(props) {
     });
   }, [probe]);
 
+  /**
+   * Whether a search is worth attempting.
+   *
+   * A search against an unreachable host does not fail fast: it waits out the
+   * full request budget and then reports the same thing the status line already
+   * said. Testing first turns that twenty-second dead end into an immediate,
+   * actionable answer — and it is also the moment a discovered local proxy gets
+   * offered, because the only reason to look for one is that nothing works.
+   *
+   * @returns whether wallhaven answered.
+   */
+  const ensureReachable = React.useCallback(async () => {
+    const known = probeRef.current;
+    // A result already in hand is the answer — including a negative one. The
+    // page tests on open and on every explicit Re-check, so re-testing here
+    // would only make a second click on a broken network wait out the same
+    // timeout again, to reach the same sentence.
+    if (known !== null) return known.ok === true;
+    const response = await getJson(route('/status', new URLSearchParams({ diagnose: '1' })));
+    if (response === null || response.ok !== true) return false;
+    setStatus(response);
+    probeRef.current = response.probe ?? null;
+    return response.probe?.ok === true;
+  }, []);
+
+  /** Adopt a proxy the connectivity test found, then confirm it works. */
+  const adoptProxy = React.useCallback(async (proxy) => {
+    const ok = await save({ proxy }, { quiet: true });
+    if (ok) await probe();
+  }, [save, probe]);
+
   /** Run one search page against the saved configuration. */
   const search = React.useCallback(async (targetPage, targetSeed) => {
     setBusy('search');
     setError(null);
+    if (!(await ensureReachable())) {
+      setBusy('');
+      setResults(null);
+      setError(t('unreachable'));
+      return;
+    }
     const params = new URLSearchParams({ page: String(targetPage) });
     if (typeof targetSeed === 'string' && targetSeed !== '') params.set('seed', targetSeed);
     const response = await getJson(route('/search', params));
@@ -1115,7 +1176,7 @@ function WallhavenSection(props) {
     setResults(response);
     setPage(response.page);
     setSeed(response.seed ?? '');
-  }, [t]);
+  }, [t, ensureReachable]);
 
   /**
    * Change a filter and show what it now selects.
@@ -1174,17 +1235,37 @@ function WallhavenSection(props) {
         h('span', {
           style: {
             fontSize: 11,
-            color: statusLine.startsWith('\u8FDE') || status?.probe?.ok === false
+            color: status?.probe?.ok === false
               ? 'var(--dsw-alias-state-error-primary, #d33)'
               : 'var(--dsw-alias-label-tertiary)',
           },
         }, statusLine),
         h('button', { type: 'button', style: S.button, disabled: probing, onClick: probe }, t('statusRecheck')))),
-
-    h('p', { style: S.hint },
-      status === null || status.proxy === ''
-        ? t('statusProxyNone')
-        : translate(t, 'statusProxy', { proxy: status.proxy })),
+    h('div', { style: S.row },
+      h('span', { style: S.hint },
+        status === null || status.proxy === ''
+          ? t('statusProxyNone')
+          : translate(t, 'statusProxy', { proxy: status.proxy })),
+      // Offered only when the test found one: a proxy the user typed is their
+      // decision to make, and a discovered one is only interesting if it works.
+      // The latency shown is the *discovery's*, not `probe.latencyMs` — the
+      // latter is the failed attempt on the current route.
+      status?.probe?.source === 'discovered' && status.probe.discovery !== null
+        ? h('span', { style: S.row },
+          h('span', { style: { ...S.hint, color: 'var(--dsw-alias-state-success-primary, #22c55e)' } },
+            translate(t, 'proxyFound', {
+              proxy: status.probe.discovery.proxy,
+              ms: String(status.probe.discovery.latencyMs),
+            })),
+          h('button', {
+            type: 'button',
+            style: S.buttonPrimary,
+            disabled: probing,
+            onClick: () => adoptProxy(status.probe.discovery.proxy),
+          }, translate(t, 'useProxy', { proxy: status.probe.discovery.proxy })))
+        : status?.probe !== null && status?.probe !== undefined && status.probe.ok === false && status.probe.source === 'direct'
+          ? h('span', { style: S.hint }, t('proxyNoneFound'))
+          : null),
 
     /* ── the switch ─────────────────────────────────────────────────────── */
     h('div', { style: S.row },
@@ -1277,13 +1358,21 @@ function WallhavenSection(props) {
           PURITY_KEYS.map((key, index) => h('button', {
             key,
             type: 'button',
-            // SFW is always on: the host refuses to persist anything else.
-            disabled: index === 0,
             style: purity[index] ? S.chipOn : S.chip,
             onClick: () => {
               const next = purity.slice();
+              // All three are toggleable, SFW included — searching sketchy-only
+              // is a legitimate choice and the API expresses it fine. What is
+              // refused is turning *everything* off, for the same reason as
+              // categories: wallhaven cannot express "no purity", and the empty
+              // result reads as "search is broken" rather than "you turned it
+              // all off". A refused click says so, because a chip that silently
+              // does nothing is indistinguishable from a broken one.
+              if (next[index] && next.filter(Boolean).length === 1) {
+                setNote(t('purityKeepOne'));
+                return;
+              }
               next[index] = !next[index];
-              next[0] = true;
               saveAndSearch({ purity: flagsToMask(next) });
             },
           }, key.toUpperCase())))),

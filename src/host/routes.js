@@ -134,8 +134,25 @@ export function createRouteHandler(options) {
       cacheDirectory: wallhaven.cacheDirectory(),
       downloadDirectory: downloadDir,
       proxy: wallhaven.proxyInEffect(),
-      probe: probe ? await wallhaven.probe() : null,
+      probe,
     };
+  }
+
+  /**
+   * Run the connectivity test the page asked for.
+   *
+   * `diagnose` is the stronger one: it also looks for a local proxy client when
+   * nothing is configured. It is what the page gates its searches on. `probe`
+   * stays for callers that only want "is the current route up", without the
+   * discovery scan.
+   *
+   * @param search - the request's query parameters.
+   * @returns the probe result, or `null` when no test was asked for.
+   */
+  async function runProbe(search) {
+    if (search.get('diagnose') === '1') return wallhaven.diagnose();
+    if (search.get('probe') === '1') return wallhaven.probe();
+    return null;
   }
 
   /**
@@ -273,7 +290,7 @@ export function createRouteHandler(options) {
           sendMethodNotAllowed(res, ['GET']);
           return;
         }
-        sendJson(res, 200, await statusPayload(search.get('probe') === '1'));
+        sendJson(res, 200, await statusPayload(await runProbe(search)));
         return;
       }
 

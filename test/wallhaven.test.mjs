@@ -330,6 +330,164 @@ test('probe reports the reason on failure and never throws', async () => {
   }
 });
 
+/* ── the connectivity test ────────────────────────────────────────────────── */
+
+/**
+ * A transport that answers by proxy rather than by URL.
+ *
+ * `diagnose` asks the same question through several routes in one call, so the
+ * fake has to tell them apart the way the real transport would: by the proxy it
+ * was handed.
+ *
+ * @param working - proxy URLs that should succeed; `''` means a direct route.
+ * @param routes - the fake transport's scripted answers.
+ * @returns a transport whose `calls` records the proxy per attempt.
+ */
+function proxyAwareTransport(working, routes) {
+  const base = fakeTransport(routes);
+  const calls = [];
+  const httpGet = async (url, options) => {
+    const proxy = options.proxy ?? '';
+    calls.push({ url, proxy });
+    if (!working.includes(proxy)) throw new Error(`连接 ${proxy === '' ? '直连' : proxy} 失败`);
+    return base.httpGet(url, options);
+  };
+  return { httpGet, httpReadText: base.httpReadText, calls };
+}
+
+test('diagnose finds a working local proxy when nothing is configured', async () => {
+  const { temp, store } = await tempStore();
+  try {
+    // Ports 7897 and 7890 are listening; only the second one actually reaches
+    // wallhaven — which is exactly the case a port scan alone cannot decide.
+    const transport = proxyAwareTransport(
+      ['http://127.0.0.1:7890'],
+      [{ match: '/api/v1/search', body: searchPayload(1) }],
+    );
+    const wallhaven = createWallhaven({
+      store,
+      env: {},
+      findOpenPorts: async () => [7897, 7890],
+      ...transport,
+    });
+
+    const result = await wallhaven.diagnose();
+    // The *configured* route still fails — that is what `ok` answers, and it is
+    // what the page's search gate reads. A found proxy is reported alongside.
+    assert.equal(result.ok, false);
+    assert.equal(result.source, 'discovered');
+    assert.equal(result.proxy, '');
+    assert.equal(result.discovered, 'http://127.0.0.1:7890');
+    assert.equal(result.discovery.proxy, 'http://127.0.0.1:7890');
+    assert.equal(typeof result.discovery.latencyMs, 'number');
+    // Both open ports are reported, including the one that did not work: the
+    // page shows the whole picture, not just the winner.
+    assert.deepEqual(result.candidates.map((candidate) => candidate.proxy), ['http://127.0.0.1:7897', 'http://127.0.0.1:7890']);
+    assert.deepEqual(result.candidates.map((candidate) => candidate.ok), [false, true]);
+    assert.match(result.candidates[0].reason, /7897/);
+  } finally {
+    await temp.cleanup();
+  }
+});
+
+test('diagnose reports a direct failure with no candidates when no port answers', async () => {
+  const { temp, store } = await tempStore();
+  try {
+    const transport = proxyAwareTransport([], [{ match: '/api/v1/search', body: searchPayload(1) }]);
+    const wallhaven = createWallhaven({ store, env: {}, findOpenPorts: async () => [], ...transport });
+
+    const result = await wallhaven.diagnose();
+    assert.equal(result.ok, false);
+    assert.equal(result.source, 'direct');
+    assert.equal(result.discovered, '');
+    assert.equal(result.discovery, null);
+    assert.deepEqual(result.candidates, []);
+    // The scan still ran — it just had nothing to try.
+    assert.equal(transport.calls.length, 1);
+  } finally {
+    await temp.cleanup();
+  }
+});
+
+test('diagnose does not second-guess a proxy the user configured', async () => {
+  const { temp, store } = await tempStore();
+  try {
+    await store.update({ proxy: 'http://127.0.0.1:9999' });
+    const transport = proxyAwareTransport([], [{ match: '/api/v1/search', body: searchPayload(1) }]);
+    let scanned = false;
+    const wallhaven = createWallhaven({
+      store,
+      env: {},
+      findOpenPorts: async () => {
+        scanned = true;
+        return [7890];
+      },
+      ...transport,
+    });
+
+    const result = await wallhaven.diagnose();
+    assert.equal(result.ok, false);
+    assert.equal(result.source, 'configured');
+    // An explicit address is a decision, not a guess to be corrected.
+    assert.equal(scanned, false);
+    assert.deepEqual(result.candidates, []);
+  } finally {
+    await temp.cleanup();
+  }
+});
+
+test('diagnose labels an environment proxy as configured, not direct', async () => {
+  const { temp, store } = await tempStore();
+  try {
+    const transport = proxyAwareTransport([], [{ match: '/api/v1/search', body: searchPayload(1) }]);
+    let scanned = false;
+    const wallhaven = createWallhaven({
+      store,
+      env: { HTTPS_PROXY: 'http://proxy.test:8080' },
+      findOpenPorts: async () => {
+        scanned = true;
+        return [];
+      },
+      ...transport,
+    });
+
+    const result = await wallhaven.diagnose();
+    assert.equal(result.ok, false);
+    assert.equal(result.source, 'configured');
+    assert.equal(scanned, false);
+  } finally {
+    await temp.cleanup();
+  }
+});
+
+test('diagnose succeeds straight away when the current route already works', async () => {
+  const { temp, store } = await tempStore();
+  try {
+    const transport = proxyAwareTransport([''], [{ match: '/api/v1/search', body: searchPayload(2) }]);
+    let scanned = false;
+    const wallhaven = createWallhaven({
+      store,
+      env: {},
+      findOpenPorts: async () => {
+        scanned = true;
+        return [7897];
+      },
+      ...transport,
+    });
+
+    const result = await wallhaven.diagnose();
+    assert.equal(result.ok, true);
+    assert.equal(result.source, 'direct');
+    assert.equal(result.discovered, '');
+    assert.equal(result.discovery, null);
+    // Nothing is broken, so nothing is scanned.
+    assert.equal(scanned, false);
+    assert.equal(transport.calls.length, 1);
+  } finally {
+    await temp.cleanup();
+  }
+});
+
 test('a random search overrides the saved sorting for that request only', async () => {
   const { temp, store } = await tempStore();
   try {
