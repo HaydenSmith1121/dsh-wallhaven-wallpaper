@@ -26,6 +26,8 @@ import { createHash, createHmac } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { importPlaywright } from './harness-paths.mjs';
+
 /* ── arguments ────────────────────────────────────────────────────────────── */
 
 function argument(name, fallback) {
@@ -85,9 +87,13 @@ const check = (label, ok, detail) => {
 };
 
 const cookie = await mintCookie();
-const { chromium } = await import(
-  'file:///C:/Users/Administrator/AppData/Roaming/npm/node_modules/agent-browser/node_modules/playwright-core/index.mjs'
-);
+let chromium;
+try {
+  ({ chromium } = await importPlaywright());
+} catch (error) {
+  console.error(error.message);
+  process.exit(2);
+}
 
 const browser = await chromium.connectOverCDP(CDP);
 const context = browser.contexts()[0] ?? await browser.newContext();

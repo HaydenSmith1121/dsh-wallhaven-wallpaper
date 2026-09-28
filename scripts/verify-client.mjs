@@ -28,7 +28,6 @@
 
 import { createServer } from 'node:http';
 import { readFile, mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 
@@ -36,26 +35,24 @@ import { createRouteHandler } from '../src/host/routes.js';
 import { createWallhaven } from '../src/host/wallhaven.js';
 import { openConfigStore } from '../src/host/store.js';
 import { ROUTE_BASE } from '../src/shared/constants.js';
+import {
+  DSH_ROOT_HELP,
+  frontendAsset,
+  importPlaywright,
+  readDshFile,
+  resolveDshRoot,
+  resolveReactRoot,
+  themeBundle,
+} from './harness-paths.mjs';
 
 const CDP_URL = process.env.DSH_CDP_URL ?? 'http://127.0.0.1:9335';
-const DSH_ROOT = process.env.DSH_APP_ROOT
-  ?? 'C:\\Users\\Administrator\\AppData\\Local\\Programs\\DSH Desktop Beta\\resources\\app';
 
-/** Where React 18 UMD lives, in the order we prefer it. */
-const REACT_CANDIDATES = [
-  join(DSH_ROOT, 'node_modules'),
-  'D:\\deepseek\\dsh-excel-viewer\\node_modules',
-];
-
-/** Resolve a directory that holds both `react` and `react-dom` UMD builds. */
-function findReactRoot() {
-  for (const candidate of REACT_CANDIDATES) {
-    if (existsSync(join(candidate, 'react', 'umd', 'react.development.js'))
-      && existsSync(join(candidate, 'react-dom', 'umd', 'react-dom.development.js'))) {
-      return candidate;
-    }
-  }
-  return null;
+// Resolved, not hard-coded: the install may be a plain directory or an
+// `app.asar`, and its product directory name has already changed once.
+const DSH_ROOT = resolveDshRoot();
+if (DSH_ROOT === null) {
+  console.error(`找不到 DSH 安装（需要 dsh-client-ui-theme 与 dsh-web-frontend）：请设置 ${DSH_ROOT_HELP}。`);
+  process.exit(2);
 }
 
 /**
@@ -70,10 +67,9 @@ function findReactRoot() {
  * @returns the concatenated CSS.
  */
 async function readThemeCss() {
-  const bundle = await readFile(
-    join(DSH_ROOT, 'node_modules', '@deepseek-ai', 'dsh-client-ui-theme', 'lib', 'client.js'),
-    'utf8',
-  );
+  const bundlePath = themeBundle(DSH_ROOT);
+  if (bundlePath === null) throw new Error(`DSH 安装里找不到 dsh-client-ui-theme（DSH_ROOT=${DSH_ROOT}）`);
+  const bundle = readDshFile(bundlePath);
   const blocks = [];
   for (const selector of [':root{', 'body{', 'body[data-ds-dark-theme]{']) {
     let from = 0;
@@ -265,14 +261,20 @@ const wallhaven = createWallhaven({ store });
 const routeHandler = createRouteHandler({ store, wallhaven, ready: Promise.resolve() });
 
 const themeCss = await readThemeCss();
-const reactRoot = findReactRoot();
+const reactRoot = resolveReactRoot(DSH_ROOT);
 if (reactRoot === null) {
-  console.error('找不到 React 18 UMD：请设置 DSH_APP_ROOT，或在 REACT_CANDIDATES 里补一个路径。');
+  console.error('找不到 React 18 UMD：请设置 DSH_REACT_ROOT 指向同时含 react/umd 与 react-dom/umd 的目录。');
   process.exit(2);
 }
 
-const shellCss = join(DSH_ROOT, 'node_modules', '@deepseek-ai', 'dsh-web-frontend', 'dist', 'assets', 'index-J8NrHpw_.css');
-const vendorCss = join(DSH_ROOT, 'node_modules', '@deepseek-ai', 'dsh-web-frontend', 'dist', 'assets', 'vendor-BNsW4eBh.css');
+// Matched by pattern: these filenames carry a Vite content hash, so pinning one
+// turns every DSH frontend build into a broken test instead of a tested build.
+const shellCss = frontendAsset(DSH_ROOT, 'index', '.css');
+const vendorCss = frontendAsset(DSH_ROOT, 'vendor', '.css');
+if (shellCss === null || vendorCss === null) {
+  console.error(`DSH 安装里找不到 dsh-web-frontend 的 CSS（DSH_ROOT=${DSH_ROOT}）。`);
+  process.exit(2);
+}
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -294,8 +296,10 @@ const server = createServer(async (req, res) => {
     if (path === '/') return send(200, 'text/html; charset=utf-8', PAGE);
     if (path === '/favicon.ico') return send(204, 'image/x-icon', '');
     if (path === '/theme.css') return send(200, 'text/css; charset=utf-8', themeCss);
-    if (path === '/shell.css') return send(200, 'text/css; charset=utf-8', await readFile(shellCss));
-    if (path === '/vendor.css') return send(200, 'text/css; charset=utf-8', await readFile(vendorCss));
+    // `readDshFile`, not `readFile`: on a packaged install these paths point
+    // inside `app.asar`, which Node's own fs cannot open.
+    if (path === '/shell.css') return send(200, 'text/css; charset=utf-8', readDshFile(shellCss));
+    if (path === '/vendor.css') return send(200, 'text/css; charset=utf-8', readDshFile(vendorCss));
     if (path === '/react.js') {
       return send(200, 'text/javascript; charset=utf-8', await readFile(join(reactRoot, 'react', 'umd', 'react.development.js')));
     }
@@ -317,9 +321,13 @@ console.log(`harness: ${origin}`);
 
 /* ── drive it ─────────────────────────────────────────────────────────────── */
 
-const { chromium } = await import(
-  'file:///C:/Users/Administrator/AppData/Roaming/npm/node_modules/agent-browser/node_modules/playwright-core/index.mjs'
-);
+let chromium;
+try {
+  ({ chromium } = await importPlaywright());
+} catch (error) {
+  console.error(error.message);
+  process.exit(2);
+}
 
 let failures = 0;
 const check = (label, ok, detail) => {
@@ -334,7 +342,12 @@ await page.setViewportSize({ width: 1500, height: 1000 });
 
 const consoleErrors = [];
 page.on('console', (message) => {
-  if (message.type() === 'error') consoleErrors.push(message.text());
+  if (message.type() !== 'error') return;
+  // A failed subresource reports only "Failed to load resource: … 500"; the URL
+  // lives on the message's location. Without it, a console-hygiene failure says
+  // a request broke but not which one, which is not a report anyone can act on.
+  const where = message.location()?.url ?? '';
+  consoleErrors.push(where === '' ? message.text() : `${message.text()} <${where}>`);
 });
 page.on('pageerror', (error) => consoleErrors.push(String(error.message)));
 
@@ -527,7 +540,14 @@ try {
     };
   });
   check('the layer is gone', off.layer === false);
-  check('the token overrides are gone', off.dynamicCss.trim() === '', JSON.stringify(off.dynamicCss.slice(0, 60)));
+  // The dynamic sheet is never empty by design: it always carries the plugin's
+  // own `--dsh-wh-on-brand`, because the settings page's primary button needs
+  // it whether or not a wallpaper is worn. What switching the wallpaper off
+  // must remove is every override of the *shell's* tokens — those are the only
+  // ones the shell can see. Asserting the whole sheet was empty tested a
+  // contract the plugin documents the opposite of.
+  const leaked = /--dsw-(?:alias|specific)-[\w-]+\s*:|html\s*\{\s*background-color/iu.test(off.dynamicCss);
+  check('the shell token overrides are gone', !leaked, JSON.stringify(off.dynamicCss.slice(0, 80)));
   check('the shell token is back to its own value', off.base !== '' && !off.base.startsWith('rgba('), off.base);
 
   console.log('\n7. console hygiene');
