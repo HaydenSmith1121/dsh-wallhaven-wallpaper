@@ -423,6 +423,118 @@ return { ...first, source: 'discovered', discovered: winner.proxy,
 > 单测当时是**绿的** —— 因为它断言的就是那个错误契约（`result.ok === true`）。
 > 是我照着实现写测试，而不是照着「这个字段是什么意思」写测试。改完契约后单测也一并改了。
 
+## 九、换到 DSH 0.2.0-rc.1
+
+**被测对象**：`@deepseek-ai/dsh` **0.2.0-rc.1**（桌面版同为 0.2.0-rc.1），包在
+`D:\install\Harness\resources\app.asar` 里；运行时 `node 24.18.1`、`win32`。同一台机器、
+同一个 mihomo（`127.0.0.1:7897`）。
+
+### 先说这一代真正变了的东西：插件兼容性闸门
+
+0.2.0-rc.1 的 `dsh-app-boot` 新增 `evaluatePluginCompatibility()`。它把包 `peerDependencies` 里
+**每一个 `@deepseek-ai/dsh` 或 `@deepseek-ai/dsh-*`** 拿去和运行时的 `semver.satisfies`
+（`includePrerelease: true`）比，不匹配就返回一条 issue；然后在两个地方动手：
+
+| 位置 | 行为 |
+|---|---|
+| `loadProfileDirectory()`（组合包层）| 该 bundle **被跳过**，写进 `skippedBundles`，启动时每个打一行 stderr |
+| `preflight()`（loader 行层）| 该行被改成 `disabled: true`（`group` 也一起关掉），并打一行 stderr |
+
+唯一的出路是 profile 自己的 `compatibility.json` 里为**精确的 `name@version`** 记一条针对
+**精确运行时版本**的豁免。作用域外的 peer（`@deepseek-ai/cordis`、`react`）那条检查直接 `continue`。
+
+**本插件一个这个作用域里的 peer 都不声明，所以闸门拒绝不了它。** 这不是巧合：
+`evaluatePluginCompatibility` 在 `peerDependencies` 缺失时直接 `return undefined`，
+在里面的键全部不在作用域内时也 `return undefined`。这条性质现在是**承重的**，
+所以 `test/compat.test.mjs` 里加了断言钉住它 —— 未来加一条 `@deepseek-ai/dsh` peer，
+本仓库其它任何闸门都不会报错，它只会表现为「插件在某个 profile 里静静消失」。
+
+### 隔离实例怎么起的
+
+同一套 junction 配方（第七节），profile 名 `whv`，`$DSH_HOME` 指到一次性目录：
+
+```powershell
+New-Item -ItemType Junction -Path "$T\profiles\whv\node_modules\dsh-wallhaven-wallpaper" -Target <仓库路径>
+# profile 的 cordis.patch.yml 必须是顶层 YAML 数组；只有注释的文件会让启动直接失败，
+# 想空着就写 `[]`。
+$env:ELECTRON_RUN_AS_NODE='1'; $env:DSH_HOME=$T
+& 'D:\install\Harness\DeepSeek Harness.exe' `
+  'D:\install\Harness\resources\app.asar\dsh\node_modules\@deepseek-ai\dsh\lib\bin.js' `
+  --profile whv --port 43992 --no-open
+```
+
+**这一代的 CLI 形状要注意**：`dsh web` 是 `dsh --profile web` 的**别名**，所以
+`dsh web --port 3081 --no-open` 照旧可用；但换了 profile 名之后必须写成
+`dsh --profile <名字> --port <端口> --no-open` —— 把 `web` 放在 `--profile whv` **后面**
+会被当成传给 app 的位置参数，进程会**静默 exit 0 且不起监听**（本次就是这么浪费了一轮）。
+
+### 结果：四层全绿
+
+| 检查 | 结果 |
+|---|---|
+| `--dump-config` | 末行 `# == dsh-wallhaven-wallpaper`，内含 `id: wallhaven-wallpaper` / `name: dsh-wallhaven-wallpaper` |
+| 启动图（`__DSH_BOOT__`）| 66 条 entry，含 `dsh-wallhaven-wallpaper`，`url: plugins/??dsh-wallhaven-wallpaper/client.js&rev=…`，`inject: [locale, ui-settings]` |
+| 客户端 bundle | `GET` 该 URL → 200，114 KB，外壳为 `window.__ModuleLoader__.load({ id: "dsh-wallhaven-wallpaper", … })` |
+| `GET /plugins/…/compat` | `{"ok":true,"dshVersion":"0.2.0-rc.1","dshVersionSource":"filesystem","profile":"whv","routes":{"ok":true,"mode":"disposer"}}` |
+| `GET /plugins/…/status`、`/config` | 均 200，配置路径落在隔离 home 下 |
+| 真浏览器（真 shell）| 侧边栏出现 **换一张**；**设置 → 壁纸** 在真实导航里出现且整页渲染；兼容性面板逐行：`宿主路由 · disposer`、`设置页席位 · settings.section`、`侧边栏席位 · sidebar.footer.action`、`文案字典 · bundled`、`主题 token · 4 / 4 · light · brand`、`背景图层 · body`，总结论「本插件需要的接口都在」 |
+| 控制台 | **0 条**报错（页面加载到渲染完） |
+| `npm run verify:client` | **28 / 28 通过**（走 `HTTPS_PROXY=http://127.0.0.1:7897`）：真搜索 24 张、缩略图真出字节、浅色对比度 18.90:1、深色 11.57:1、切深色后画布 token 重算为 `rgba(21, 21, 23, 0.720)`、关掉后图层消失且 shell token 复位 |
+| `npm run verify:gui` | **全部通过**（`--home <隔离 home> --origin http://127.0.0.1:43992`）：宿主半 `/status` 200、bundle 真被 carrier 下发到页面、设置外壳里点出 **壁纸** 一节并渲染出搜索/外观/访问三组控件、真搜索 **24 张缩略图且字节真的经插件路由到达**、铺上后 shell 画布与侧边栏 token 被改成 `rgba(255,255,255,0.720)` / `rgba(249,250,251,0.720)`、关掉后复原、**本插件 0 条控制台报错**（该页共 38 个 `/plugins` 请求）|
+
+> `verify:gui` 的鉴权派生（从 `.credentials.yaml` 取 `client-connection/browser-session` 密钥、
+> base64url **先解码成 32 字节**再当 HMAC key、cookie 名 `dsh-auth-<base64url(sha256(authority))>`、
+> 值 `v1.<body>.<sig>`）**在 0.2.0-rc.1 上原样可用**，没有改动一行。
+> 唯一要记得的是：隔离实例自己得能上网 —— 给**宿主进程**带上 `HTTPS_PROXY`，
+> 否则搜索那两步会失败，而插件自身的表现是完全正确的（第八节那套「找到代理并给一个使用按钮」照常工作）。
+
+也就是说：**0.2.0-rc.1 上这个插件用到的接口一个都没变**，和 0.1.7-rc.2 那一轮的结论一致。
+唯一变化的可见输出是 `dshVersionStatus` —— 加进 `VERIFIED_DSH_VERSIONS` 之前是 `untested`，
+之后是 `verified`。
+
+### 顺手确认掉的三件事（都不是 bug）
+
+1. **`dshVersionSource` 是 `filesystem` 而不是 `loader`**，这是**设计如此**，不是退化。
+   `cordis-plugin-loader` 的 `ModuleLoader.fromInternal()` 要求 `process.execArgv` 里有
+   `--expose-internals`（或 `node-addon-require-builtin` 可用）才拿得到 Node 内部 loader；
+   拿不到就 `internal` 为 `undefined`，插件按文档路径退到文件系统上溯。第八节的隔离实例带了
+   `--expose-internals`，所以那次报的是 `loader`。
+2. **`dsh.client.inject` 里那个 `@deepseek-ai/dsh-client-ui-settings` 不会成为暗雷。**
+   本机桌面 profile 把它 `enabled: false` 掉了，但那是**插件自己的 config 字段**，不是 `disabled: true`
+   的行 —— 行仍然挂着，模块仍然在启动图里（实测 66 条一条不少），所以这条 inject 边照常解析。
+   就算它真的不在图里，浏览器侧也只是 `graphRows.get(name)` 得到 `undefined` 就跳过，
+   不会把消费者连坐。**没有改动这个声明。**
+3. **`dsh.manifestVersion` 仍然只是声明性的。** `dsh-package-manifest` 的 README 明说
+   「当前安装器和加载器不强制检查 `dsh.manifestVersion` 或 `engines.dsh`」，与 0.1.7-rc.2 一致。
+
+### 这一轮修掉的：验证工具在 0.2.0-rc.1 上根本跑不起来
+
+插件本身没问题，**是量它的尺子坏了**。0.2.0-rc.1 的安装把包全放进了 `app.asar`，
+而两个浏览器脚本还按「普通目录」的假设写死了路径：
+
+| 原来的写法 | 后果 |
+|---|---|
+| `DSH_APP_ROOT ?? '…\DSH Desktop Beta\resources\app'` | 那个目录**已经不存在**，脚本起不来 |
+| `index-J8NrHpw_.css` / `vendor-BNsW4eBh.css` | Vite 内容哈希，0.2.0-rc.1 里 index 已是 `index-Cq6ljTv2.css` —— 就算目录对了也读不到 |
+| `file:///C:/Users/Administrator/…/agent-browser/…/playwright-core/index.mjs` | 写死某一个人的 roaming 目录；本机实际在 `@playwright/cli/node_modules/…` |
+| React UMD 候选含 `D:\deepseek\dsh-excel-viewer\node_modules` | 指向一个**无关项目**的目录 |
+| `readFile(D:\install\Harness\resources\app.asar\…)` | Node 自带的 `fs` **打不开归档** |
+
+新增 `scripts/harness-paths.mjs`：自动找安装位置（标准位置优先，再对固定盘做一次有界扫描）、
+**直接读 `app.asar`**（自带一个几十行的归档读取器，只读文件头）、按**模式**匹配前端 CSS、
+按候选表解析 `playwright-core`；全部支持环境变量覆盖（`DSH_APP_ROOT` / `DSH_REACT_ROOT` /
+`DSH_PLAYWRIGHT` / `DSH_CDP_URL`）。`DSH_ROOT` 不再有默认值 —— 找不到就**说清楚要找什么**并 `exit 2`，
+而不是从四层调用栈底下抛一个 `ENOENT`。
+
+顺带修掉两条**断言错了契约**的检查（正是第八节记下的那类错误）：
+
+- 「关掉后动态样式表为空」：插件**故意**让动态表始终带着自己的 `--dsh-wh-on-brand`
+  （设置页的主按钮无论铺不铺壁纸都要能读），所以整表清空从来不是契约。
+  改成断言**shell 的 token 覆盖**（`--dsw-alias-*` / `--dsw-specific-*` / `html{background-color}`）已经消失。
+- 控制台报错只记了「Failed to load resource … 500」，没有 URL —— 无法定位。现在带上
+  `message.location().url`，于是立刻看出那两个 500 是脚本自己的 mock 服务读不了 asar 里的 CSS
+  （`/shell.css`、`/vendor.css`），与插件无关；修成 `readDshFile` 后归零。
+
 ## 没验证到的
 
 - **NSFW / sketchy 与账号相关接口**：需要一个真实 API Key，本次没有使用。相关分支（401 的措辞、
@@ -431,7 +543,11 @@ return { ...first, source: 'discovered', discovered: winner.proxy,
 - **非回环部署**：路由的写操作只做同源校验，没有身份认证——这是 DSH 自身的姿态，README 里已写明。
 - **`0.1.6-alpha.1` 之外的旧版本**：容错分支有单测，但没有把插件真的装到那些版本上跑过。
   能力探测层的作用正是让这种情况**可诊断**（兼容性面板会列出缺哪一块），而不是保证它一定能用。
+- **`verify:gui`（第九节）**：0.2.0-rc.1 上跑通了，但它驱动的是一台**一次性隔离实例**，
+  不是生产 profile（3080/3081）。生产 profile 上的安装路径（`dsh plugin --profile … add`）
+  这一代没有重跑。
 - **wallhaven 真实取图（第七节）**：那一轮的隔离实例没有配代理，所以只验证了 token 改写与图层挂载，
-  图片本身是 502。真实取图由第二节（`verify:live`）和第八节（走 mihomo 的 24 张缩略图）覆盖。
+  图片本身是 502。真实取图由第二节（`verify:live`）和第八节（走 mihomo 的 24 张缩略图）覆盖；
+  第九节的 `verify:client` 也真连了一次（24 张）。
 - **自动探测的端口表**：只覆盖了常见客户端的默认 HTTP 端口。非默认端口、或只开 SOCKS 的客户端，
   仍然要手填 —— 探测失败时页面会说「本机常见代理端口都没有应答」，而不是假装找过了。

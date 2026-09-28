@@ -29,10 +29,46 @@
  *
  * Advisory only — see the file comment. `0.1.6-alpha.1` is the generation the
  * client half was originally written for; `0.1.7-rc.2` is the generation the
- * compatibility layer was added on. Both were verified end to end (host routes,
+ * compatibility layer was added on; `0.2.0-rc.1` is the generation that added a
+ * plugin-compatibility gate the manifest has to stay on the right side of (see
+ * {@link isEnforcedDshPeer}). All three were verified end to end (host routes,
  * served client bundle, live settings page).
  */
-export const VERIFIED_DSH_VERSIONS = ['0.1.6-alpha.1', '0.1.7-rc.2'];
+export const VERIFIED_DSH_VERSIONS = ['0.1.6-alpha.1', '0.1.7-rc.2', '0.2.0-rc.1'];
+
+/** The package scope whose **peer** declarations a DSH runtime may enforce. */
+export const DSH_PEER_PREFIX = '@deepseek-ai/dsh';
+
+/**
+ * Whether a peer name is one a DSH runtime would enforce.
+ *
+ * DSH 0.2.0-rc.1 introduced `evaluatePluginCompatibility()`: every
+ * `@deepseek-ai/dsh` or `@deepseek-ai/dsh-*` key in a package's
+ * `peerDependencies` is tested against the running runtime, and a mismatch is
+ * not a warning — a **bundle** is skipped at startup (`skippedBundles`, printed
+ * once per start) and a **loader row** is rewritten to `disabled: true`, unless
+ * the profile carries an exact `name@version` exemption in its own
+ * `compatibility.json`. Peers outside this scope — `@deepseek-ai/cordis`,
+ * `react` — are ignored by that check.
+ *
+ * So this plugin declares no peer in this scope at all, and that is a decision
+ * rather than an omission: its posture is to probe each interface at run time
+ * instead of asserting a version range, so a declared range could only ever
+ * *subtract* it from a profile it would otherwise have run in — silently, and
+ * on exactly the unknown future runtime the probe layer exists for. A peer range
+ * is a guess that fails closed; {@link COMPAT_STATUSES} in the settings page is
+ * the honest answer to "does this runtime work".
+ *
+ * Mirrors the runtime's own test, which accepts `@deepseek-ai/dsh` exactly or
+ * any `@deepseek-ai/dsh-` prefixed name. `test/compat.test.mjs` asserts the
+ * manifest stays outside this scope, because the property is load-bearing.
+ *
+ * @param name - a `peerDependencies` key.
+ * @returns whether a DSH runtime may refuse this plugin over that peer.
+ */
+export function isEnforcedDshPeer(name) {
+  return name === DSH_PEER_PREFIX || name.startsWith(`${DSH_PEER_PREFIX}-`);
+}
 
 /** Statuses a capability row can carry, worst last. */
 export const COMPAT_STATUSES = ['ok', 'degraded', 'missing'];

@@ -17,6 +17,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import {
@@ -25,6 +26,7 @@ import {
   classifyVersion,
   compatEntry,
   createTranslator,
+  isEnforcedDshPeer,
   parseVersion,
   reasonOf,
   registerLocaleDictionary,
@@ -68,6 +70,7 @@ test('versionAtLeast orders prereleases below their release', () => {
 test('classifyVersion labels a verified build and never gates on the number', () => {
   assert.equal(classifyVersion('0.1.7-rc.2'), 'verified');
   assert.equal(classifyVersion('0.1.6-alpha.1'), 'verified');
+  assert.equal(classifyVersion('0.2.0-rc.1'), 'verified');
   assert.equal(classifyVersion('9.9.9-nightly.7'), 'untested');
   assert.equal(classifyVersion(''), 'unknown');
   assert.equal(classifyVersion(null), 'unknown');
@@ -75,6 +78,64 @@ test('classifyVersion labels a verified build and never gates on the number', ()
   // than crashing — that is what makes it safe to edit.
   assert.equal(classifyVersion('0.1.7-rc.2', []), 'untested');
   assert.ok(VERIFIED_DSH_VERSIONS.length > 0);
+});
+
+test('a prerelease sorts below its own release, so 0.2.0-rc.1 < 0.2.0', () => {
+  // Worth pinning: every DSH runtime this plugin has been verified on is a
+  // prerelease, so the comparison has to treat `rc.1` as *older* than `0.2.0`
+  // rather than as an unrelated string.
+  assert.equal(versionAtLeast('0.2.0-rc.1', '0.1.7-rc.2'), true);
+  assert.equal(versionAtLeast('0.2.0-rc.1', '0.2.0'), false);
+  assert.equal(versionAtLeast('0.2.0', '0.2.0-rc.1'), true);
+});
+
+/* ── the runtime's plugin-compatibility gate ──────────────────────────────── */
+
+/*
+ * DSH 0.2.0-rc.1 added `evaluatePluginCompatibility()`: it tests every
+ * `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` key in a package's
+ * `peerDependencies` against the running runtime and, on a mismatch, does not
+ * warn — it skips the whole **bundle** at startup and rewrites the **loader
+ * row** to `disabled: true`, unless the profile carries an exact
+ * `name@version` exemption.
+ *
+ * The only reason this plugin loads on a runtime its author has never seen is
+ * that it declares no peer in that scope. That makes the property load-bearing
+ * rather than stylistic, so it is asserted here: a future edit that adds a
+ * `@deepseek-ai/dsh` peer would not fail any other gate in this repository —
+ * it would fail silently, as a plugin that vanishes from a profile.
+ */
+
+const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+
+test('isEnforcedDshPeer mirrors the runtime, including the bare scope and near misses', () => {
+  assert.equal(isEnforcedDshPeer('@deepseek-ai/dsh'), true);
+  assert.equal(isEnforcedDshPeer('@deepseek-ai/dsh-client-ui-slots'), true);
+  // Out of scope: the runtime ignores these, so a range here is harmless.
+  assert.equal(isEnforcedDshPeer('@deepseek-ai/cordis'), false);
+  assert.equal(isEnforcedDshPeer('react'), false);
+  // Near misses that a looser prefix test would wrongly flag.
+  assert.equal(isEnforcedDshPeer('@deepseek-ai/dshx'), false);
+  assert.equal(isEnforcedDshPeer('dsh'), false);
+  assert.equal(isEnforcedDshPeer('@other/dsh-thing'), false);
+});
+
+test('the manifest declares no peer the 0.2.0 compatibility gate could refuse', () => {
+  const peers = Object.keys(manifest.peerDependencies ?? {});
+  assert.deepEqual(peers.filter(isEnforcedDshPeer), []);
+  // And the peers it does declare stay out of that scope, because a range there
+  // would be exactly the version assertion the probe layer exists to avoid.
+  assert.deepEqual([...peers].sort(), ['@deepseek-ai/cordis', 'react']);
+});
+
+test('the manifest keeps every field the client-half discovery path reads', () => {
+  assert.equal(manifest.dsh?.manifestVersion, 1);
+  assert.equal(manifest.dsh?.client?.platform, 'web');
+  assert.equal(manifest.dsh?.bundle?.patch, './cordis.patch.yml');
+  assert.equal(manifest.exports?.['./client'], './lib/client.js');
+  // A declared path that does not exist is a client half that never arrives.
+  assert.ok(existsSync(new URL('../lib/client.js', import.meta.url)));
+  assert.ok(existsSync(new URL('../cordis.patch.yml', import.meta.url)));
 });
 
 /* ── the report ───────────────────────────────────────────────────────────── */

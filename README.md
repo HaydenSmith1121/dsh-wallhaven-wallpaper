@@ -3,14 +3,14 @@
 > 给 DeepSeek Harness 的 Web GUI 换上一层壁纸：**在设置里搜 wallhaven.cc，点一下就把那张图铺成界面背景**，并可以随时把原图存到本地。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/DeepSeek_Harness-0.1.6_%E2%80%93_0.1.7--rc.2-4D6BFE?style=flat-square" alt="dsh 基线">
+  <img src="https://img.shields.io/badge/DeepSeek_Harness-0.1.6_%E2%80%93_0.2.0--rc.1-4D6BFE?style=flat-square" alt="dsh 基线">
   <img src="https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square" alt="MIT">
   <img src="https://img.shields.io/badge/零依赖-无运行时依赖-8B5CF6?style=flat-square" alt="零依赖">
 </p>
 
 > **换了 Harness 版本先看这里。** 本插件不按版本号判断兼容性，而是**逐个接口探测**：
 > 每个调用独立成败，缺了哪一个就降级哪一个，并写进 **设置 → 壁纸 → 兼容性** 给你看。
-> `0.1.6-alpha.1` 与 `0.1.7-rc.2` 两代都实测跑通；其它版本请看那一页的报告，而不是猜。
+> `0.1.6-alpha.1`、`0.1.7-rc.2`、`0.2.0-rc.1` 三代都实测跑通；其它版本请看那一页的报告，而不是猜。
 > 详见 [兼容性](#兼容性)。
 
 ---
@@ -207,6 +207,7 @@ DSH 是 nightly 节奏，而这个插件是从 git 装的 ——「你手上的�
 |---|---|---|
 | `0.1.6-alpha.1` | Desktop Beta 2.0.11-beta.1 | 全部接口齐全（原始基线） |
 | `0.1.7-rc.2` | 桌面版 0.1.7-rc.2 | 全部接口齐全；过程中修掉了下面两个真问题 |
+| `0.2.0-rc.1` | 桌面版 0.2.0-rc.1 | 全部接口齐全；多了一道**插件兼容性闸门**，见下 |
 
 `0.1.7-rc.2` 上抓到的两个问题，都属于「只在真环境里才看得见」：
 
@@ -221,6 +222,25 @@ DSH 是 nightly 节奏，而这个插件是从 git 装的 ——「你手上的�
    `var(--dsw-alias-label-primary-inverted, 兜底)` —— 有就用主题的（CSS 实时解析，不存在过期问题），
    没有就用按对比度算出来的黑/白。实测浅色 18.90:1、深色 11.57:1。
 
+#### 0.2.0-rc.1 加的那道闸门
+
+0.2.0-rc.1 引入了 `evaluatePluginCompatibility()`：包 `peerDependencies` 里**每一个
+`@deepseek-ai/dsh` / `@deepseek-ai/dsh-*`** 条目都会被拿去和正在运行的运行时比对，不匹配**不是警告**：
+
+- 组合**包（bundle）**会被**静默跳过**（只写进 `skippedBundles`，启动时打一行 stderr）；
+- **loader 行**会被改成 `disabled: true`；
+- 唯一的出路是在 profile 自己的 `compatibility.json` 里为那个 **精确的 `name@version`** 记一条豁免。
+
+本插件**一个这个作用域里的 peer 都不声明**，所以这道闸门永远拒绝不了它。（作用域外的
+`@deepseek-ai/cordis`、`react` 那条检查根本不看。）这是**有意为之，不是漏写**：插件的姿态是
+运行时逐个探测接口，而不是断言一个版本区间；声明区间只可能把它从本来能跑的 profile 里
+**减掉**，而且是在作者没见过的未来版本上悄悄减掉 —— 一个失败时关闭的猜测。
+"这个运行时到底行不行"的诚实答案在旁边那一页兼容性报告里，不在 `peerDependencies` 里。
+
+这条性质是**承重的**，所以 `test/compat.test.mjs` 会断言清单里没有这个作用域的 peer：
+未来某次改动加了一条 `@deepseek-ai/dsh` peer，本仓库其它任何一道闸门都不会报错，
+它只会表现为「插件在某个 profile 里静静消失」。
+
 ### 边界
 
 - 宿主半：一个前缀路由 `/plugins/dsh-wallhaven-wallpaper`（其余路由都挂在它下面），
@@ -231,18 +251,32 @@ DSH 是 nightly 节奏，而这个插件是从 git 装的 ——「你手上的�
 - Node `^22.19.0 || >=24.0.0`。
 - `peerDependencies` 写成 `>=` 而不是 `^`：插件从不 `import` cordis 或 react
   （React 由 shell 的 seed 表提供），卡死上界只会在 Harness 升级时挡住安装。
+- **不声明任何 `@deepseek-ai/dsh*` peer**，理由见上面「0.2.0-rc.1 加的那道闸门」。
 - `package.json` 里的 `dsh.manifestVersion` 在 0.1.7-rc.2 里**已经没有任何代码读它**，
   但保留着：老版本可能校验它，而新版本忽略未知字段——留着两边都不会坏。
+  0.2.0-rc.1 里它同样只是声明性的（`dsh-package-manifest` 自己的 README 明说安装器与加载器都不强制它）。
 
 ## 开发
 
 ```bash
 npm run build          # src/ → lib/（宿主半原样拷贝；客户端半内联共享词汇 + 加 ModuleLoader 外壳）
 npm run build:check    # 校验 lib/ 与 src/ 一致（CI 用）
-npm test               # 109 项单元与集成测试
+npm test               # 113 项单元与集成测试
 npm run verify:live    # 真连 wallhaven（需要 HTTPS_PROXY 或已配置代理）
-npm run verify:client  # 真浏览器 + 真主题 token 的渲染验证
+npm run verify:client  # 真浏览器 + 真主题 token 的渲染验证（28 项）
+npm run verify:gui     # 真 dsh web 实例 + 真设置外壳
 ```
+
+两个浏览器脚本不再把宿主路径写死，而是自动找安装位置，并且**能直接读 `resources/app.asar`**
+（打包安装把包都放在归档里，Node 自带的 `fs` 打不开）。前端 CSS 的 Vite 内容哈希按**模式**匹配，
+所以 Harness 前端一更新，脚本报的是「测过了」，而不是「路径不存在」。需要时用环境变量覆盖：
+
+| 变量 | 用途 |
+|---|---|
+| `DSH_APP_ROOT` | 宿主 app 目录，或 `resources/app.asar` 本身 |
+| `DSH_REACT_ROOT` | 同时含 `react/umd` 与 `react-dom/umd` 的目录（`verify:client` 需要）|
+| `DSH_PLAYWRIGHT` | `playwright-core` 的入口文件 |
+| `DSH_CDP_URL` | Chrome 的 CDP 地址，默认 `http://127.0.0.1:9335` |
 
 ```
 src/
@@ -265,12 +299,14 @@ src/
 `test/compat.test.mjs` 专门覆盖「Harness 不按预期回答」的那一半：只有一个
 `register(ns, locale, dict)` 重载的 locale 服务、注册到一半抛异常的字典、
 在某个席位上抛错的 slots、返回 `undefined` 的 `webServer.register`，
-以及主按钮在「近白底配白字」时把白色**拒掉**。这些都是只有换版本才会走到的分支。
+以及主按钮在「近白底配白字」时把白色**拒掉**。这些都是只有换版本才会走到的分支；
+0.2.0-rc.1 那道闸门的不变量（清单里没有 `@deepseek-ai/dsh*` peer）也在这里钉住。
 
 `verify:client` 会在真实浏览器里加载 `lib/client.js`，把它挂进一个复刻外壳，
-并**从已安装的 DSH 里提取真实的 `--dsw-*` token**再断言计算样式 —— 包括浅色与深色两套，
-以及在两套配色下主按钮文字的对比度。它至少抓到过三个真 bug：覆盖写在了 `:root`（无效）、
-主按钮写死白色文字（深色主题下白底白字 1.05:1）、以及主题切换晚一拍导致浅色下壁纸完全透不出来。
+并**从已安装的 DSH 里提取真实的 `--dsw-*` token**（打包安装里这些文件在 `app.asar` 内，
+脚本直接读归档）再断言计算样式 —— 包括浅色与深色两套，以及在两套配色下主按钮文字的对比度。
+它至少抓到过三个真 bug：覆盖写在了 `:root`（无效）、主按钮写死白色文字（深色主题下白底白字 1.05:1）、
+以及主题切换晚一拍导致浅色下壁纸完全透不出来。
 
 ## 许可
 
